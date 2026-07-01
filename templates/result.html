@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenGoDig — {{.Query}}</title>
+    <link rel="icon" type="image/png" href="/static/img/favicon-96x96.png" sizes="96x96" />
+    <link rel="shortcut icon" href="/static/img/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="OpenGoDig" />
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+
+<body class="page-result">
+<div class="grid"></div>
+<header class="hdr">
+    <a class="back" href="/">&#8592; {{T "result.back"}}</a>
+    <div class="hdr-dom">
+        {{if isReverseDNS .QueryType}}<span class="rc">PTR</span>{{else}}<span class="rc">DNS</span>{{end}}
+        &nbsp;<span>{{.Query}}</span>
+    </div>
+    <form class="hs" action="/lookup" method="GET">
+        <input class="mi" type="text" name="query" placeholder="{{T "result.search_placeholder"}}" autocomplete="off" spellcheck="false" />
+        {{if .Resolvers}}
+        <select class="ms" name="resolver" title="{{T "index.resolver_label"}}">
+            <option value="">{{T "index.resolver_auto"}}</option>
+            {{$chosen := .ChosenResolver}}{{range .Resolvers}}<option value="{{.}}"{{if eq . $chosen}} selected{{end}}>{{.}}</option>{{end}}
+        </select>
+        {{end}}
+        <button class="mb" type="submit">&#8594;</button>
+    </form>
+</header>
+
+<main class="main">
+    {{if .Error}}
+    <div class="err">
+        <div class="ei">&#9888;</div>
+        <div class="em">{{T "result.error_title"}}</div>
+        <div class="ed">{{.Error}}</div>
+    </div>
+    {{else}}
+
+    <!-- Hero -->
+    <div class="hero rh">
+        <div class="hero-l">
+            <div class="src src-r">&#10003; DNS Lookup</div>
+            <div class="hn">{{.Query}}</div>
+            <div class="hero-meta">
+                {{if .Server}}<div class="srv">{{T "result.resolver"}}&nbsp;: {{.Server}}</div>{{end}}
+                {{if .Rcode}}<span class="badge {{rcodeClass .Rcode}}">{{.Rcode}}</span>{{end}}
+                {{if .QueryTime}}<span class="badge status-other">{{.QueryTime}}</span>{{end}}
+            </div>
+            {{if .Flags}}
+            <div class="badges">
+                {{if .Flags.Authoritative}}<span class="badge status-ok" title="{{T "result.flag_aa"}}">AA</span>{{end}}
+                {{if .Flags.RecursionDesired}}<span class="badge status-other" title="{{T "result.flag_rd"}}">RD</span>{{end}}
+                {{if .Flags.RecursionAvailable}}<span class="badge status-other" title="{{T "result.flag_ra"}}">RA</span>{{end}}
+                {{if .Flags.AuthenticData}}<span class="badge status-lock" title="{{T "result.flag_ad"}}">AD</span>{{end}}
+                {{if .Flags.CheckingDisabled}}<span class="badge status-pending" title="{{T "result.flag_cd"}}">CD</span>{{end}}
+                {{if .Flags.Truncated}}<span class="badge status-hold" title="{{T "result.flag_tc"}}">TC</span>{{end}}
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <!-- Warnings -->
+    {{range .Warnings}}
+    <div class="notice notice-warn">
+        <div class="ni">&#9888;&#65039;</div>
+        <div class="nt"><strong class="warn">Warning</strong> — {{.}}</div>
+    </div>
+    {{end}}
+
+    <!-- Record groups -->
+    {{if .Records}}
+    <div class="igrid">
+        {{range .Records}}
+        <div class="card">
+            <div class="ch">
+                <span class="{{recordTypeClass .Type}}">&#9679;</span>
+                <span class="ct">{{.Type}} {{T "result.records"}}</span>
+                <span class="rec-count">{{len .Records}}</span>
+            </div>
+            <div class="cb">
+                <table class="rtable">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>TTL</th>
+                            <th>Class</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Records}}
+                        <tr>
+                            <td class="rn">{{.Name}}</td>
+                            <td class="rt-ttl">{{formatTTL .TTL}}</td>
+                            <td class="rt-cls">{{.Class}}</td>
+                            <td class="rt-val">{{if .Priority}}<span class="pri">{{.Priority}}</span> {{end}}{{.Value}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {{end}}
+    </div>
+    {{else}}
+    <div class="notice notice-w">
+        <div class="ni">&#8505;&#65039;</div>
+        <div class="nt">{{T "result.no_records"}}</div>
+    </div>
+    {{end}}
+
+    <!-- Raw data -->
+    {{if .RawResponse}}
+    <div class="raw-sec">
+        <button class="rt" id="rb" onclick="tog()">
+            <span>&#128196;</span>
+            <span>{{T "result.raw_response"}}</span>
+            <span class="arr" id="ra">&#9654;</span>
+        </button>
+        <div class="rb" id="rd">
+            <pre>{{.RawResponse}}</pre>
+        </div>
+    </div>
+    {{end}}
+
+    <div class="api-hint">
+        <a href="/api/lookup?query={{.Query}}{{if .ChosenResolver}}&amp;resolver={{.ChosenResolver}}{{end}}" target="_blank">&#128196; {{T "result.view_json"}}</a>
+        &nbsp;&middot;&nbsp;
+        <a href="/api/status" target="_blank">&#9881; {{T "result.resolver_status"}}</a>
+    </div>
+
+    {{end}}<!-- /if Error -->
+</main>
+<script src="/static/js/result.js"></script>
+</body>
+
+</html>

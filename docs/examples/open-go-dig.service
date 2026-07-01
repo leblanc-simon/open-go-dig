@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenGoDig - Web DNS Lookup
+After=network.target
+
+[Service]
+Type=simple
+User=open-go-dig
+Group=open-go-dig
+WorkingDirectory=/opt/open-go-dig
+ExecStart=/opt/open-go-dig/open-go-dig -c /opt/open-go-dig/config.yaml
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadOnlyPaths=/opt/open-go-dig
+
+[Install]
+WantedBy=multi-user.target

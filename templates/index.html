@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenGoDig</title>
+    <link rel="icon" type="image/png" href="/static/img/favicon-96x96.png" sizes="96x96" />
+    <link rel="shortcut icon" href="/static/img/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="OpenGoDig" />
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+
+<body class="page-index">
+<div class="grid"></div>
+<div class="wrap">
+    <div class="logo">
+        <div class="logo-tag">// DNS Intelligence</div>
+        <h1>OpenGoDig</h1>
+        <p>{{T "index.subtitle"}}</p>
+        <div class="protos">
+            <span class="proto p-dns">DNS</span>
+            <span class="proto p-dnssec">DNSSEC</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <form action="/lookup" method="GET">
+            <div class="inp-wrap">
+                <label class="lbl" for="query">{{T "index.label"}}</label>
+                <span class="ico">&#9135;</span>
+                <input class="inp" type="text" id="query" name="query" placeholder="{{T "index.placeholder"}}" autocomplete="off" spellcheck="false" autofocus />
+            </div>
+            {{if .Resolvers}}
+            <div class="resolver-sel">
+                <label class="lbl" for="resolver">{{T "index.resolver_label"}}</label>
+                <select class="resolver-input" id="resolver" name="resolver">
+                    <option value="">{{T "index.resolver_auto"}}</option>
+                    {{range .Resolvers}}<option value="{{.}}">{{.}}</option>{{end}}
+                </select>
+            </div>
+            {{end}}
+            <fieldset class="type-sel">
+                <legend class="lbl">{{T "index.type_label"}}</legend>
+                <div class="type-chips">
+                    <label class="type-chip"><input type="radio" name="type" value="" checked /><span>{{T "index.type_all"}}</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="A" /><span>A</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="AAAA" /><span>AAAA</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="MX" /><span>MX</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="NS" /><span>NS</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="TXT" /><span>TXT</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="CNAME" /><span>CNAME</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="SOA" /><span>SOA</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="PTR" /><span>PTR</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="SRV" /><span>SRV</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="CAA" /><span>CAA</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="DNSKEY" /><span>DNSKEY</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="DS" /><span>DS</span></label>
+                    <label class="type-chip"><input type="radio" name="type" value="TLSA" /><span>TLSA</span></label>
+                </div>
+            </fieldset>
+            <button class="btn" type="submit">{{T "index.submit"}} &#8594;</button>
+            <div class="exs">
+                <span class="exs-lbl">{{T "index.examples"}}</span>
+                <span class="chip" onclick="q('google.com')">google.com</span>
+                <span class="chip" onclick="q('1.1.1.1')">1.1.1.1</span>
+                <span class="chip" onclick="q('cloudflare.com')">cloudflare.com</span>
+                <span class="chip" onclick="q('MX:proton.me')">MX:proton.me</span>
+            </div>
+        </form>
+    </div>
+
+    <div class="how">
+        <div class="how-ttl">{{T "index.resolution"}}</div>
+        <div class="steps">
+            <div class="step"><span class="sn sn-r">1</span><span>{{T "index.step1"}}</span></div>
+            <div class="step"><span class="sn sn-r">2</span><span>{{rawHTML (T "index.step2")}}</span></div>
+            <div class="step"><span class="sn sn-r">3</span><span>{{T "index.step3"}}</span></div>
+        </div>
+    </div>
+
+    <div class="feats">
+        <div class="feat">
+            <div class="feat-ico">&#127760;</div>
+            <div class="feat-txt">{{rawHTML (T "index.feat_resolvers")}}</div>
+        </div>
+        <div class="feat">
+            <div class="feat-ico">&#128209;</div>
+            <div class="feat-txt">{{rawHTML (T "index.feat_types")}}</div>
+        </div>
+        <div class="feat">
+            <div class="feat-ico">&#128274;</div>
+            <div class="feat-txt">{{rawHTML (T "index.feat_dnssec")}}</div>
+        </div>
+    </div>
+    <div class="powered">DNS &middot; RFC 1035 &middot; <a href="/api/status" style="color:inherit">API status</a> &middot; <a href="/about" style="color:inherit">{{T "about.link"}}</a></div>
+</div>
+<script src="/static/js/index.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="{{lang}}">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenGoDig — {{T "about.title"}}</title>
+    <link rel="icon" type="image/png" href="/static/img/favicon-96x96.png" sizes="96x96" />
+    <link rel="shortcut icon" href="/static/img/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/img/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="OpenGoDig" />
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+
+<body class="page-about">
+<div class="grid"></div>
+<div class="wrap">
+    <a class="about-back" href="/">&#8592; {{T "about.back"}}</a>
+
+    <div class="logo">
+        <div class="logo-tag">// {{T "about.tag"}}</div>
+        <h1>OpenGoDig</h1>
+        <p>{{T "about.subtitle"}}</p>
+    </div>
+
+    <div class="card about-card">
+        <div class="about-section-title">{{T "about.license_title"}}</div>
+        <div class="about-license-name">WTFPL</div>
+        <div class="about-license-full">{{T "about.license_full"}}</div>
+        <p>{{rawHTML (T "about.license_text")}}</p>
+        <div class="about-license-pre">
+            <span class="ll">0.</span> {{T "about.license_clause"}}
+        </div>
+        <div class="about-license-meta">
+            Version 2 &middot; December 2004 &middot; Copyright &copy; 2004 Sam Hocevar
+        </div>
+    </div>
+
+    <div class="card about-card">
+        <div class="about-section-title">{{T "about.credits_title"}}</div>
+        <p>{{rawHTML (T "about.credits_text")}}</p>
+        <div class="credits-grid">
+            <div class="credit">
+                <div class="credit-glyph">&#10022;</div>
+                <div class="credit-name">Claude</div>
+                <div class="credit-role">{{T "about.credit_claude"}}</div>
+            </div>
+            <div class="credit">
+                <div class="credit-glyph">&#9787;</div>
+                <div class="credit-name">Simon Leblanc</div>
+                <div class="credit-role">{{T "about.credit_simon"}}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="powered">DNS &middot; RFC 1035 &middot; <a href="/" style="color:inherit">{{T "about.home"}}</a></div>
+</div>
+</body>
+
+</html>
