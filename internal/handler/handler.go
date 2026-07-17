@@ -61,7 +61,7 @@ func sanitizeDomain(raw string) string {
 	s = strings.TrimSuffix(s, ".")
 	var b strings.Builder
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '.' || r == ':' {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' || r == ':' {
 			b.WriteRune(r)
 		}
 	}

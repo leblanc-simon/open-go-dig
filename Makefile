@@ -5,7 +5,9 @@ version     := $(shell git describe --tags --abbrev=0 2>/dev/null || echo "devel
 ldflags     := -s -w -X 'main.version=$(version)'
 
 .DEFAULT_GOAL := help
-.PHONY: help debug release clean-build build-linux build-darwin build-windows
+test_port   := 8099
+
+.PHONY: help debug release clean-build build-linux build-darwin build-windows test-dns
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -20,6 +22,14 @@ release: clean-build build-linux build-darwin build-windows ## Build the release
 
 clean-build: ## Clean the build directory
 	@rm -fr $(build_path)
+
+test-dns: debug ## Build, launch the server and run the DNS test battery
+	@echo "Starting $(app_name) on port $(test_port)..."
+	@OGD_PORT=$(test_port) $(build_path)$(app_name) >/dev/null 2>&1 & \
+		srv_pid=$$!; \
+		trap 'kill $$srv_pid 2>/dev/null' EXIT; \
+		sleep 1.5; \
+		$(mkfile_path)scripts/test-dns.sh http://localhost:$(test_port)
 
 build-linux: ## Build release for GNU/Linux
 	@mkdir -p $(build_path)
