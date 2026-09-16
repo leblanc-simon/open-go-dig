@@ -40,7 +40,7 @@ Static assets bypass the rate limiter by being registered on the outer `mux` dir
 
 1. `sanitize` (length cap 253, trim) → `parseTypePrefix` extracts `TYPE:domain` syntax (e.g. `MX:google.com`) → `sanitizeDomain` strips schemes/paths and whitelists `[a-z0-9.\-:]`.
 2. `query.Detect` distinguishes domain / IPv4 / IPv6 (the latter two trigger a reverse PTR query).
-3. Type resolution priority: prefix > `?type=` query param > defaults (`A,AAAA,MX,NS,TXT,CNAME,SOA,CAA,HTTPS`). Reverse queries always force `PTR` and ignore type hints.
+3. Type resolution priority: prefix > `?type=` query param > defaults (`A,AAAA,MX,NS,TXT,CNAME,SOA,CAA,HTTPS`, exposed as `dns.DefaultTypeNames()`). Reverse queries always force `PTR` and ignore type hints. **Several types can be asked for at once**, in either spelling: repeated (`?type=MX&type=NS`, what the checkbox picker submits) or comma-separated (`?type=MX,NS`, and `MX,NS:example.com` as a prefix). `handler.requestedTypes` joins the repeated values into one list before `dns.ParseRecordTypes`, which deduplicates and drops empty entries — the picker's default chip submits `value=""`, so an explicit type always wins over it when JS is unavailable.
 4. `dns.Client.Lookup` sends **one query per record type, in parallel**, each iterating the configured resolvers (default `8.8.8.8:53, 1.1.1.1:53, 9.9.9.9:53`) using UDP and falling back to TCP per-query when the response is truncated. Per-query failures become `Warnings` rather than fatal errors so a partial result still renders.
 5. Records are grouped by type in `model.RecordGroup`; group order in the response follows the order of types in the request.
 
@@ -49,6 +49,8 @@ Static assets bypass the rate limiter by being registered on the outer `mux` dir
 `internal/dns/types.go` is the single source of truth: `TypeCatalog` lists the 44 queryable types in five display groups (`core`, `service`, `security`, `dnssec`, `infra`). `allSupportedTypes` — which gates both `?type=` and the `TYPE:domain` prefix — is *derived* from it via `mdns.StringToType`, and the picker on the search form walks the same slice (`indexView.TypeGroups`). Obsolete types (SPF, WKS, MB/MG/MR/MINFO/NULL, SIG, KEY, TA/DLV…) and meta types (OPT, TSIG, TKEY, AXFR, IXFR, ANY) are deliberately excluded.
 
 Adding a record type means: one entry in `TypeCatalog`, a `result.record_type_<lowercase name>` key in **every** `locales/*.yaml`, a branch in `recordTypeClass` (`internal/handler/handler.go`) plus its CSS class, and optionally a `case` in `parseRR` — without one, the record still renders through the generic `rr.String()` fallback.
+
+The picker is a set of **checkboxes**, not radios: the first chip (`index.type_default`, "Panorama"/"Overview") stands for `defaultTypes` and is mutually exclusive with the rest — `static/js/index.js` enforces that in both directions and re-checks it when the selection empties. Its tooltip is built from `dns.DefaultTypeNames()` (`indexView.DefaultTypeList`), so the chip can never over-promise: it is a 9-type sweep, **not** the 44-type catalogue. `?type=ALL` is still accepted and still means "the defaults".
 
 Queries for the DNSSEC family (`dnssecTypes` in `types.go`) are sent with the **EDNS0 DO bit** set and a 4096-byte buffer; without it resolvers strip signatures and denial-of-existence records. A side effect worth knowing: a `DNSKEY`/`DS`/`CDS` lookup also brings back the covering `RRSIG`, so the result page shows an extra card. Queries for every other type stay DO-less, and default lookups are unchanged.
 
@@ -74,6 +76,8 @@ Template helpers (`buildFuncMap`) include `recordTypeClass`, `rcodeClass`, `form
 
 `internal/config/config.go` is the single source of truth for runtime configuration. It composes the shared `appconf` fragments (`Web`, `CORS`, `Logging`) plus an app-specific `DNS` fragment, each embedded under an `env-prefix:"OGD_"`. Fragment fields declare their env tags **without** the prefix; the prefix is applied at the composition point (cleanenv only supports a static prefix). Config is loaded by `appconf.MustLoad` in `main.go`, which also wires the `-c`, `--help` (with env-var docs) and `--version` flags — **do not** read env vars or flags ad-hoc elsewhere. Adding app-specific configuration means adding a field to the `DNS` fragment (or a new fragment) with both `yaml` and `env` tags.
 
+Resolvers accept an optional display name: each `dns.resolvers` entry is `host:port` or `Name=host:port` (`dns.ParseResolver`, which also appends `:53` and brackets a bare IPv6 literal). The name is a picker affordance only — `Resolver.Label()` renders `Name - host:port` in the two `<select>` elements — and is **never** accepted as input: `AllowedResolver` matches on `Addr`, so the SSRF allowlist is unaffected. `Client.Resolvers` is `[]Resolver`; the query path, `StatusHandler` and the startup log all go through `Client.Addrs()`.
+
 Env vars follow the fragment tags: `OGD_HOST`, `OGD_PORT`, `OGD_RATE_LIMIT`, `OGD_TRUSTED_PROXIES` (from `appconf.Web`); `OGD_CORS_ALLOWED_ORIGINS`, `OGD_CORS_ALLOW_CREDENTIALS`, … (from `appconf.CORS`); `OGD_LOG_LEVEL`, `OGD_LOG_FORMAT`, `OGD_LOG_SOURCE` (from `appconf.Logging`); `OGD_DNS_RESOLVERS`, `OGD_DNS_TIMEOUT`, `OGD_DNS_MAX_PARALLEL` (from the local `DNS` fragment). Run `./build/open-go-dig --help` for the full list.
 
 ## Routes
@@ -82,8 +86,8 @@ Env vars follow the fragment tags: `OGD_HOST`, `OGD_PORT`, `OGD_RATE_LIMIT`, `OG
 |---|---|---|---|
 | GET | `/` | `IndexHandler` | search form |
 | GET | `/about` | `AboutHandler` | |
-| GET | `/lookup?query=...&type=...` | `LookupHandler` | HTML; reverse DNS auto-detected from IP input; supports `TYPE:domain` shortcut |
-| GET | `/api/lookup?query=...&type=...` | `ApiHandler` | JSON; same lookup logic; `502` on resolver failure |
+| GET | `/lookup?query=...&type=...&resolver=...` | `LookupHandler` | HTML; reverse DNS auto-detected from IP input; supports `TYPE:domain` shortcut; `type` repeatable |
+| GET | `/api/lookup?query=...&type=...&resolver=...` | `ApiHandler` | JSON; same lookup logic; `502` on resolver failure |
 | GET | `/api/status` | `StatusHandler` | per-resolver latency probe, run in parallel |
 | GET | `/static/*` | embedded FS | bypasses rate limit |
 

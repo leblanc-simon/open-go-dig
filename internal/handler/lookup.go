@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"open-go-dig/internal/dns"
 	"open-go-dig/internal/model"
 )
 
@@ -11,7 +12,7 @@ import (
 // plus enough context to re-render the search form (resolver list + chosen).
 type resultView struct {
 	*model.DNSResult
-	Resolvers      []string
+	Resolvers      []dns.Resolver
 	ChosenResolver string
 }
 
@@ -24,7 +25,7 @@ func (a *App) LookupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	typeParam := strings.TrimSpace(r.URL.Query().Get("type"))
+	typeParam := requestedTypes(r)
 	resolverParam := strings.TrimSpace(r.URL.Query().Get("resolver"))
 	info := a.lookup(r.Context(), q, typeParam, resolverParam, loc)
 

@@ -141,7 +141,7 @@ func main() {
 			"addr", addr,
 			"log_level", cfg.Log.Level,
 			"rate_limit", cfg.Web.RateLimit,
-			"resolvers", dnsCl.Resolvers,
+			"resolvers", dnsCl.Addrs(),
 			"cors_origins", cfg.CORS.AllowedOrigins,
 		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

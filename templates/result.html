@@ -25,7 +25,7 @@
         {{if .Resolvers}}
         <select class="ms" name="resolver" title="{{T "index.resolver_label"}}">
             <option value="">{{T "index.resolver_auto"}}</option>
-            {{$chosen := .ChosenResolver}}{{range .Resolvers}}<option value="{{.}}"{{if eq . $chosen}} selected{{end}}>{{.}}</option>{{end}}
+            {{$chosen := .ChosenResolver}}{{range .Resolvers}}<option value="{{.Addr}}"{{if eq .Addr $chosen}} selected{{end}}>{{.Label}}</option>{{end}}
         </select>
         {{end}}
         <button class="mb" type="submit">&#8594;</button>

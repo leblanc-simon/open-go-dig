@@ -37,16 +37,17 @@
                 <label class="lbl" for="resolver">{{T "index.resolver_label"}}</label>
                 <select class="resolver-input" id="resolver" name="resolver">
                     <option value="">{{T "index.resolver_auto"}}</option>
-                    {{range .Resolvers}}<option value="{{.}}">{{.}}</option>{{end}}
+                    {{range .Resolvers}}<option value="{{.Addr}}">{{.Label}}</option>{{end}}
                 </select>
             </div>
             {{end}}
             <fieldset class="type-sel">
                 <legend class="lbl">{{T "index.type_label"}}</legend>
+                <p class="type-hint">{{T "index.type_multi_hint"}}</p>
                 {{$groups := .TypeGroups}}
                 <div class="type-chips">
-                    <label class="type-chip"><input type="radio" name="type" value="" checked /><span>{{T "index.type_all"}}</span></label>
-                    {{range (index $groups 0).Types}}<label class="type-chip" title="{{T (printf "result.record_type_%s" (lower .))}}"><input type="radio" name="type" value="{{.}}" /><span>{{.}}</span></label>
+                    <label class="type-chip type-chip--default" title="{{T "index.type_default_hint" $}}"><input type="checkbox" name="type" value="" checked /><span>{{T "index.type_default"}}</span></label>
+                    {{range (index $groups 0).Types}}<label class="type-chip" title="{{T (printf "result.record_type_%s" (lower .))}}"><input type="checkbox" name="type" value="{{.}}" /><span>{{.}}</span></label>
                     {{end}}
                 </div>
                 <details class="type-more">
@@ -55,7 +56,7 @@
                     <div class="type-group">
                         <span class="type-group-ttl">{{T (printf "index.type_group_%s" .Key)}}</span>
                         <div class="type-chips">
-                            {{range .Types}}<label class="type-chip" title="{{T (printf "result.record_type_%s" (lower .))}}"><input type="radio" name="type" value="{{.}}" /><span>{{.}}</span></label>
+                            {{range .Types}}<label class="type-chip" title="{{T (printf "result.record_type_%s" (lower .))}}"><input type="checkbox" name="type" value="{{.}}" /><span>{{.}}</span></label>
                             {{end}}
                         </div>
                     </div>

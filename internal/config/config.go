@@ -19,7 +19,10 @@ type Config struct {
 // the project prefix; it is applied at the composition point above via
 // env-prefix (cleanenv only supports a static prefix).
 type DNS struct {
-	Resolvers []string `yaml:"resolvers" env:"DNS_RESOLVERS" env-separator:"," env-description:"Upstream DNS resolvers (host:port), comma-separated"`
+	// Resolvers accepts "host:port" or "Name=host:port"; the name is only ever
+	// shown in the resolver picker ("Name - host:port") and is never accepted
+	// as input, so the SSRF allowlist keeps matching on the address alone.
+	Resolvers []string `yaml:"resolvers" env:"DNS_RESOLVERS" env-separator:"," env-description:"Upstream DNS resolvers ([Name=]host:port), comma-separated"`
 	Timeout   int      `yaml:"timeout"   env:"DNS_TIMEOUT"   env-default:"5" env-description:"Per-resolver query timeout in seconds"`
 	// MaxParallel bounds the record-type queries a single lookup sends at
 	// once. ?type= accepts the whole catalogue, so an unbounded fan-out would

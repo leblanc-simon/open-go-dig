@@ -20,7 +20,7 @@ func (a *App) ApiHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	typeParam := strings.TrimSpace(r.URL.Query().Get("type"))
+	typeParam := requestedTypes(r)
 	resolverParam := strings.TrimSpace(r.URL.Query().Get("resolver"))
 	info := a.lookup(r.Context(), q, typeParam, resolverParam, loc)
 

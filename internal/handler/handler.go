@@ -82,6 +82,15 @@ func parseTypePrefix(input string) ([]uint16, string) {
 	return nil, input
 }
 
+// requestedTypes collects the record types asked for by a request. The picker
+// submits one `type` value per checked box, while the API and the
+// TYPE:domain shortcut use a comma-separated list; joining both forms lets
+// dns.ParseRecordTypes see a single list — where the empty value submitted by
+// the default chip falls out on its own.
+func requestedTypes(r *http.Request) string {
+	return strings.Join(r.URL.Query()["type"], ",")
+}
+
 // ─── Main lookup logic ────────────────────────────────────────────────────────
 
 const lookupTimeout = 30 * time.Second
@@ -170,7 +179,8 @@ func normalizeResolver(s string) string {
 // Accepting arbitrary user-supplied addresses would let clients probe
 // internal services (loopback, RFC1918, link-local, IPv6 ULA, …) and turn
 // the server into an open DNS forwarder. We therefore enforce strict
-// membership in `a.DNSClient.Resolvers` — never parse the input as an IP and
+// membership in `a.DNSClient.Resolvers` (on Addr: the display name is never
+// accepted as input) — never parse the input as an IP and
 // never apply private-range filtering as a substitute (IPv6 has too many
 // reserved ranges to enumerate safely).
 func (a *App) AllowedResolver(input string) (string, bool) {
@@ -179,8 +189,8 @@ func (a *App) AllowedResolver(input string) (string, bool) {
 		return "", false
 	}
 	for _, r := range a.DNSClient.Resolvers {
-		if r == target {
-			return r, true
+		if r.Addr == target {
+			return r.Addr, true
 		}
 	}
 	return "", false

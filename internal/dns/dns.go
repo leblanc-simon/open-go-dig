@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 	"sync"
 	"time"
@@ -15,8 +14,13 @@ import (
 	"open-go-dig/internal/model"
 )
 
-// defaultResolvers are used when no resolvers are configured.
-var defaultResolvers = []string{"8.8.8.8:53", "1.1.1.1:53", "9.9.9.9:53"}
+// defaultResolvers are used when no resolvers are configured. They carry their
+// operator's name so the picker is legible out of the box.
+var defaultResolvers = []Resolver{
+	{Name: "Google", Addr: "8.8.8.8:53"},
+	{Name: "Cloudflare", Addr: "1.1.1.1:53"},
+	{Name: "Quad9", Addr: "9.9.9.9:53"},
+}
 
 // defaultMaxParallel bounds the per-lookup fan-out when the configuration
 // leaves it unset.
@@ -24,7 +28,7 @@ const defaultMaxParallel = 8
 
 // Client performs DNS queries against configured resolvers.
 type Client struct {
-	Resolvers []string
+	Resolvers []Resolver
 	Timeout   time.Duration
 	// MaxParallel caps the number of record-type queries in flight for a
 	// single lookup. Zero or less falls back to defaultMaxParallel.
@@ -35,23 +39,30 @@ type Client struct {
 // NewClient creates a DNS client with the given resolvers, timeout and
 // per-lookup parallelism cap.
 func NewClient(resolvers []string, timeoutSec, maxParallel int) *Client {
-	if len(resolvers) == 0 {
-		resolvers = defaultResolvers
+	// ParseResolvers also normalizes the addresses (missing port, bare IPv6
+	// literal) and splits off the optional "Name=" prefix.
+	list := ParseResolvers(resolvers)
+	if len(list) == 0 {
+		list = defaultResolvers
 	}
 	if maxParallel <= 0 {
 		maxParallel = defaultMaxParallel
 	}
-	// Ensure all resolvers have a port
-	for i, r := range resolvers {
-		if _, _, err := net.SplitHostPort(r); err != nil {
-			resolvers[i] = r + ":53"
-		}
-	}
 	return &Client{
-		Resolvers:   resolvers,
+		Resolvers:   list,
 		Timeout:     time.Duration(timeoutSec) * time.Second,
 		MaxParallel: maxParallel,
 	}
+}
+
+// Addrs returns the resolver addresses in configured order — what the query
+// path, the status probe and the logs work with. Names never travel with them.
+func (c *Client) Addrs() []string {
+	out := make([]string, len(c.Resolvers))
+	for i, r := range c.Resolvers {
+		out[i] = r.Addr
+	}
+	return out
 }
 
 // ParseRecordTypes converts a comma-separated type string to DNS type codes.
@@ -59,15 +70,25 @@ func ParseRecordTypes(typeStr string) []uint16 {
 	if typeStr == "" {
 		return nil
 	}
+	// Deduplicated: the picker submits one value per checked box and the API
+	// accepts a free-form list, so "A,A,A,…" would otherwise become that many
+	// goroutines and that many identical cards.
 	var types []uint16
+	seen := make(map[uint16]bool)
 	for _, t := range strings.Split(typeStr, ",") {
 		t = strings.TrimSpace(strings.ToUpper(t))
+		// An empty entry is what the picker's default chip submits; "ALL" is
+		// the historical spelling of the same intent. Both mean "no explicit
+		// type", which Lookup reads as defaultTypes.
 		if t == "ALL" || t == "" {
 			continue
 		}
-		if code, ok := allSupportedTypes[t]; ok {
-			types = append(types, code)
+		code, ok := allSupportedTypes[t]
+		if !ok || seen[code] {
+			continue
 		}
+		seen[code] = true
+		types = append(types, code)
 	}
 	return types
 }
@@ -84,7 +105,7 @@ func TypeName(t uint16) string {
 // The caller is responsible for ensuring resolverOverride belongs to a trusted
 // list — this method does NOT validate it.
 func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, isReverse bool, resolverOverride string) (*model.DNSResult, error) {
-	resolvers := c.Resolvers
+	resolvers := c.Addrs()
 	if resolverOverride != "" {
 		resolvers = []string{resolverOverride}
 	}

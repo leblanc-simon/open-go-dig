@@ -54,6 +54,17 @@ var defaultTypes = []uint16{
 	mdns.TypeHTTPS,
 }
 
+// DefaultTypeNames lists, in query order, the types a lookup covers when none
+// is picked. The picker shows it as the default chip's tooltip, so the chip
+// can never promise more than it delivers.
+func DefaultTypeNames() []string {
+	names := make([]string, len(defaultTypes))
+	for i, t := range defaultTypes {
+		names[i] = TypeName(t)
+	}
+	return names
+}
+
 // dnssecTypes must be queried with the EDNS0 DO bit set: without it a resolver
 // strips signatures and denial-of-existence records from the answer, and the
 // card would come back empty for no visible reason.

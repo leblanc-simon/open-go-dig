@@ -195,6 +195,7 @@ body.page-index{display:flex;align-items:center;justify-content:center}
 .type-sel{
   border:none;padding:0;margin-bottom:1.25rem;min-width:0;
   legend{padding:0;float:none}
+  .type-hint{margin:.35rem 0 .6rem;font-size:.68rem;color:var(--muted);opacity:.75;line-height:1.4}
 }
 .type-chips{display:flex;gap:.4rem;flex-wrap:wrap}
 .type-chip{
@@ -206,6 +207,8 @@ body.page-index{display:flex;align-items:center;justify-content:center}
   &:hover span{border-color:var(--accent);color:var(--accent)}
   input:checked + span{background:rgba(0,255,157,.1);border-color:var(--accent);color:var(--accent);font-weight:700}
   input:focus-visible + span{box-shadow:0 0 0 2px rgba(0,255,157,.3)}
+  /* The default sweep is not a record type: dashed, to read as a preset. */
+  &.type-chip--default span{border-style:dashed;letter-spacing:.02em}
 }
 /* The 35 less common types, folded away until asked for */
 .type-more{

@@ -27,13 +27,13 @@ func (a *App) StatusHandler(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			latency, err := dns.CheckResolver(r.Context(), srv, a.DNSClient.Timeout)
+			latency, err := dns.CheckResolver(r.Context(), srv.Addr, a.DNSClient.Timeout)
 			status := "ok"
 			if err != nil {
 				status = "error"
 			}
 			resolvers[i] = resolverStatus{
-				Server:  srv,
+				Server:  srv.Addr,
 				Latency: latency.String(),
 				Status:  status,
 			}
