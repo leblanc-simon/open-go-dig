@@ -37,17 +37,17 @@ type RecordInfo struct {
 	Class    string // IN, CH, etc.
 	Type     string // A, AAAA, MX, etc.
 	Value    string // IP, hostname, text, etc.
-	Priority uint16 // For MX and SRV only
+	Priority uint16 // MX, SRV, NAPTR, HTTPS/SVCB, URI, KX, AFSDB
 }
 
 // DNSFlags represents the flags from a DNS response.
 type DNSFlags struct {
 	Authoritative      bool `json:"authoritative"`      // AA
-	RecursionDesired   bool `json:"recursionDesired"`    // RD
-	RecursionAvailable bool `json:"recursionAvailable"`  // RA
-	AuthenticData      bool `json:"authenticData"`       // AD (DNSSEC)
-	CheckingDisabled   bool `json:"checkingDisabled"`    // CD
-	Truncated          bool `json:"truncated"`           // TC
+	RecursionDesired   bool `json:"recursionDesired"`   // RD
+	RecursionAvailable bool `json:"recursionAvailable"` // RA
+	AuthenticData      bool `json:"authenticData"`      // AD (DNSSEC)
+	CheckingDisabled   bool `json:"checkingDisabled"`   // CD
+	Truncated          bool `json:"truncated"`          // TC
 }
 
 // APIResponse is the JSON representation exposed by the API.

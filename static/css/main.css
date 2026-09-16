@@ -128,7 +128,7 @@
 /* ─── Variables & Reset ─────────────────────────────────────────────────── */
 :root {
   --bg:#0a0a0f;--surface:#12121a;--s2:#15151f;--surface2:#15151f;--border:#1e1e2e;
-  --accent:#00ff9d;--a2:#ff3366;--a3:#5b6aff;--accent3:#5b6aff;--a4:#ffb830;
+  --accent:#00ff9d;--a2:#ff3366;--a3:#5b6aff;--accent3:#5b6aff;--a4:#ffb830;--a5:#c06bff;
   --text:#e8e8f0;--muted:#6b6b8a;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -192,17 +192,38 @@ body.page-index{display:flex;align-items:center;justify-content:center}
   appearance:none;-webkit-appearance:none;cursor:pointer;transition:border-color .15s}
 .resolver-input:focus{border-color:var(--accent);outline:none}
 /* Type selector */
-.type-sel{border:none;padding:0;margin-bottom:1.25rem;min-width:0}
-.type-sel legend{padding:0;float:none}
+.type-sel{
+  border:none;padding:0;margin-bottom:1.25rem;min-width:0;
+  legend{padding:0;float:none}
+}
 .type-chips{display:flex;gap:.4rem;flex-wrap:wrap}
-.type-chip{cursor:pointer;display:inline-flex;position:relative}
-.type-chip input{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
-.type-chip span{display:inline-block;background:transparent;border:1px solid var(--border);border-radius:6px;
-  padding:.3rem .65rem;font-family:'Space Mono',monospace;font-size:.72rem;color:var(--muted);
-  letter-spacing:.05em;transition:all .15s;user-select:none}
-.type-chip:hover span{border-color:var(--accent);color:var(--accent)}
-.type-chip input:checked + span{background:rgba(0,255,157,.1);border-color:var(--accent);color:var(--accent);font-weight:700}
-.type-chip input:focus-visible + span{box-shadow:0 0 0 2px rgba(0,255,157,.3)}
+.type-chip{
+  cursor:pointer;display:inline-flex;position:relative;
+  input{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+  span{display:inline-block;background:transparent;border:1px solid var(--border);border-radius:6px;
+    padding:.3rem .65rem;font-family:'Space Mono',monospace;font-size:.72rem;color:var(--muted);
+    letter-spacing:.05em;transition:all .15s;user-select:none}
+  &:hover span{border-color:var(--accent);color:var(--accent)}
+  input:checked + span{background:rgba(0,255,157,.1);border-color:var(--accent);color:var(--accent);font-weight:700}
+  input:focus-visible + span{box-shadow:0 0 0 2px rgba(0,255,157,.3)}
+}
+/* The 35 less common types, folded away until asked for */
+.type-more{
+  margin-top:.7rem;
+  summary{
+    display:inline-flex;align-items:center;gap:.4rem;cursor:pointer;list-style:none;
+    font-family:'Space Mono',monospace;font-size:.62rem;color:var(--muted);
+    letter-spacing:.15em;text-transform:uppercase;transition:color .15s;
+    &::-webkit-details-marker{display:none}
+    &::before{content:'>';display:inline-block;transition:transform .2s}
+    &:hover{color:var(--accent)}
+  }
+  &[open] summary::before{transform:rotate(90deg)}
+  .type-group{margin-top:.8rem}
+  .type-group-ttl{display:block;font-family:'Space Mono',monospace;font-size:.6rem;
+    color:var(--muted);opacity:.8;letter-spacing:.15em;text-transform:uppercase;
+    margin-bottom:.4rem}
+}
 /* Comment ca marche */
 .how{margin-top:1.5rem;background:var(--surface2);border:1px solid var(--border);
   border-radius:12px;padding:1.25rem 1.5rem}
@@ -334,6 +355,7 @@ body.page-result .grid{opacity:.18}
 .rtype-mx{color:var(--a3)}
 .rtype-txt{color:var(--a4)}
 .rtype-cname{color:var(--muted)}
+.rtype-svcb{color:var(--a5)}
 .rtype-caa{color:var(--a2)}
 .rtype-ds{color:var(--accent3)}
 .rtype-other{color:var(--muted)}
@@ -352,8 +374,12 @@ body.page-result .grid{opacity:.18}
 /* Cards (result) */
 .page-result .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;padding:0}
 .page-result .card::before{display:none}
-.ch{display:flex;align-items:center;gap:.6rem;padding:.9rem 1.25rem;
-  border-bottom:1px solid var(--border);background:var(--s2)}
+.ch{
+  display:flex;align-items:center;gap:.6rem;padding:.9rem 1.25rem;
+  border-bottom:1px solid var(--border);background:var(--s2);
+  .ch-ttl{display:flex;flex-direction:column;gap:.15rem;min-width:0}
+  .ct-desc{font-size:.66rem;color:var(--muted);line-height:1.3}
+}
 .ct{font-family:'Space Mono',monospace;font-size:.68rem;color:var(--accent);
   letter-spacing:.15em;text-transform:uppercase;font-weight:700}
 .rec-count{font-family:'Space Mono',monospace;font-size:.6rem;color:var(--muted);

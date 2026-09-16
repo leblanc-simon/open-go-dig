@@ -3,8 +3,8 @@
 # test-dns.sh — batterie de tests fonctionnels contre l'API OpenGoDig.
 #
 # Balaie une série de domaines couvrant les cas notables (underscore/DKIM/DMARC,
-# SRV, CAA, reverse IPv4/IPv6, IDN/punycode, DNSSEC, NXDOMAIN…) et vérifie pour
-# chacun le résultat retourné par l'app.
+# SRV, CAA, HTTPS/SVCB, NAPTR, DANE, reverse IPv4/IPv6, IDN/punycode, DNSSEC,
+# NXDOMAIN…) et vérifie pour chacun le résultat retourné par l'app.
 #
 # Si la commande `dig` est présente, chaque cas est en plus comparé à `dig` en
 # mode différentiel : `dig` interroge LE MÊME résolveur que celui ayant répondu
@@ -80,15 +80,24 @@ CASES=(
 	"Reverse IPv4 Cloudflare (PTR)|1.1.1.1|PTR|exact"
 	"Reverse IPv6 (PTR)|2606:4700:4700::1111|PTR|exact"
 	"NXDOMAIN|nxdomain-xyz-does-not-exist-ogd.example|A|empty"
+	"HTTPS (ALPN/ECH)|cloudflare.com|HTTPS|count"
+	"SVCB (résolveur DoH/DoT)|_dns.resolver.arpa|SVCB|count"
+	"NAPTR (ENUM/SIP)|columbia.edu|NAPTR|exact"
+	"SSHFP (empreinte SSH)|salsa.debian.org|SSHFP|count"
+	"TLSA (DANE)|_25._tcp.mail.ietf.org|TLSA|count"
+	"LOC (géolocalisation)|caida.org|LOC|count"
+	"DNSKEY (bit DO requis)|cloudflare.com|DNSKEY|count"
+	"CDS (bit DO requis)|cloudflare.com|CDS|count"
+	"NSEC3PARAM (bit DO requis)|fr|NSEC3PARAM|count"
 )
 
 pass=0
 fail=0
 
 if $HAVE_DIG; then
-	printf '%-38s %-6s %-5s %-5s %s\n' "CAS" "MODE" "APP" "DIG" "RÉSULTAT"
+	printf '%-32s %-6s %-5s %-5s %s\n' "CAS" "MODE" "APP" "DIG" "RÉSULTAT"
 else
-	printf '%-38s %-6s %-5s %s\n' "CAS" "MODE" "APP" "RÉSULTAT (dig absent)"
+	printf '%-32s %-6s %-5s %s\n' "CAS" "MODE" "APP" "RÉSULTAT (dig absent)"
 fi
 printf '%s\n' "------------------------------------------------------------------------------------"
 
@@ -103,12 +112,12 @@ for entry in "${CASES[@]}"; do
 
 	body="$(curl -fsS --max-time 30 "$url" 2>/dev/null)"
 	if [ -z "$body" ] || ! echo "$body" | jq empty >/dev/null 2>&1; then
-		printf '%-38s %-6s %-5s %-5s %s\n' "$label" "$mode" "-" "-" "✗ (réponse app invalide)"
+		printf '%-32s %-6s %-5s %-5s %s\n' "$label" "$mode" "-" "-" "✗ (réponse app invalide)"
 		fail=$((fail + 1))
 		continue
 	fi
 
-	app_vals="$(echo "$body" | jq -r '[.records[]?.Records[]? | if .Type=="MX" then "\(.Priority) \(.Value)" else .Value end] | .[]')"
+	app_vals="$(echo "$body" | jq -r '[.records[]?.Records[]? | if (.Type | test("^(MX|NAPTR|HTTPS|SVCB|URI|KX|AFSDB)$")) then "\(.Priority) \(.Value)" else .Value end] | .[]')"
 	app_n="$(count_lines "$app_vals")"
 
 	# ── Sans dig : vérification simple app-only ────────────────────────────
@@ -119,9 +128,9 @@ for entry in "${CASES[@]}"; do
 			ok=$([ "$app_n" -gt 0 ] && echo true || echo false)
 		fi
 		if [ "$ok" = true ]; then
-			printf '%-38s %-6s %-5s %s\n' "$label" "$mode" "$app_n" "✓"; pass=$((pass + 1))
+			printf '%-32s %-6s %-5s %s\n' "$label" "$mode" "$app_n" "✓"; pass=$((pass + 1))
 		else
-			printf '%-38s %-6s %-5s %s\n' "$label" "$mode" "$app_n" "✗"; fail=$((fail + 1))
+			printf '%-32s %-6s %-5s %s\n' "$label" "$mode" "$app_n" "✗"; fail=$((fail + 1))
 		fi
 		continue
 	fi
@@ -176,7 +185,7 @@ for entry in "${CASES[@]}"; do
 			;;
 	esac
 
-	printf '%-38s %-6s %-5s %-5s %s\n' "$label" "$mode" "$app_n" "$dig_n" "$result"
+	printf '%-32s %-6s %-5s %-5s %s\n' "$label" "$mode" "$app_n" "$dig_n" "$result"
 done
 
 printf '%s\n' "------------------------------------------------------------------------------------"

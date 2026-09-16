@@ -40,9 +40,19 @@ Static assets bypass the rate limiter by being registered on the outer `mux` dir
 
 1. `sanitize` (length cap 253, trim) → `parseTypePrefix` extracts `TYPE:domain` syntax (e.g. `MX:google.com`) → `sanitizeDomain` strips schemes/paths and whitelists `[a-z0-9.\-:]`.
 2. `query.Detect` distinguishes domain / IPv4 / IPv6 (the latter two trigger a reverse PTR query).
-3. Type resolution priority: prefix > `?type=` query param > defaults (`A,AAAA,MX,NS,TXT,CNAME,SOA,CAA`). Reverse queries always force `PTR` and ignore type hints.
+3. Type resolution priority: prefix > `?type=` query param > defaults (`A,AAAA,MX,NS,TXT,CNAME,SOA,CAA,HTTPS`). Reverse queries always force `PTR` and ignore type hints.
 4. `dns.Client.Lookup` iterates the configured resolvers (default `8.8.8.8:53, 1.1.1.1:53, 9.9.9.9:53`) using UDP, falling back to TCP per-query when the response is truncated. Per-query failures become `Warnings` rather than fatal errors so a partial result still renders.
 5. Records are grouped by type in `model.RecordGroup`; group order in the response follows the order of types in the request.
+
+### Record types
+
+`internal/dns/types.go` is the single source of truth: `TypeCatalog` lists the 44 queryable types in five display groups (`core`, `service`, `security`, `dnssec`, `infra`). `allSupportedTypes` — which gates both `?type=` and the `TYPE:domain` prefix — is *derived* from it via `mdns.StringToType`, and the picker on the search form walks the same slice (`indexView.TypeGroups`). Obsolete types (SPF, WKS, MB/MG/MR/MINFO/NULL, SIG, KEY, TA/DLV…) and meta types (OPT, TSIG, TKEY, AXFR, IXFR, ANY) are deliberately excluded.
+
+Adding a record type means: one entry in `TypeCatalog`, a `result.record_type_<lowercase name>` key in **every** `locales/*.yaml`, a branch in `recordTypeClass` (`internal/handler/handler.go`) plus its CSS class, and optionally a `case` in `parseRR` — without one, the record still renders through the generic `rr.String()` fallback.
+
+Queries for the DNSSEC family (`dnssecTypes` in `types.go`) are sent with the **EDNS0 DO bit** set and a 4096-byte buffer; without it resolvers strip signatures and denial-of-existence records. A side effect worth knowing: a `DNSKEY`/`DS`/`CDS` lookup also brings back the covering `RRSIG`, so the result page shows an extra card. Queries for every other type stay DO-less, and default lookups are unchanged.
+
+`?type=RRSIG` is honoured but resolvers often answer `SERVFAIL` — RFC 4034 §3.1.6 discourages RRSIG as a QTYPE. Also note `sanitizeDomain` strips the trailing dot, so the root zone (`.`) cannot be queried; `ZONEMD`/`CSYNC`, which are most interesting at the root, need a named zone.
 
 A 30s lookup timeout is applied via `context.WithTimeout` in `App.lookup`, layered on top of the per-resolver `cfg.DNS.Timeout`.
 
@@ -50,9 +60,9 @@ A 30s lookup timeout is applied via `context.WithTimeout` in `App.lookup`, layer
 
 Translations live in `locales/<lang>.yaml` (go-i18n flat format: `message.id: "text"`), embedded and loaded once at startup by `i18n.NewFS(localeFiles, "locales", "en")` in `main.go` into an `*i18n.Bundle` stored on `App.I18n`. The available languages are derived dynamically from the YAML files present, so **adding a language is just dropping a `locales/xx.yaml`** — no code change.
 
-`App.InitTemplates` parses each HTML template **once** with a default-language `FuncMap`. Per request, `App.localizer(r)` builds an `*i18n.Localizer` (language from `?lang=` then `Accept-Language`, falling back to the default), and `renderLocalized` calls `template.Clone()` and re-binds a fresh `FuncMap` for that localizer. `buildFuncMap` merges the localizer's `T`/`Tn` helpers with the app-specific ones (`rawHTML`, `lang`, `recordTypeClass`, `rcodeClass`, `formatTTL`, `totalRecords`, `isReverseDNS`). The response always sets `Vary: Accept-Language`. In templates, use `{{T "key"}}` (and `{{rawHTML (T "key")}}` for HTML values).
+`App.InitTemplates` parses each HTML template **once** with a default-language `FuncMap`. Per request, `App.localizer(r)` builds an `*i18n.Localizer` (language from `?lang=` then `Accept-Language`, falling back to the default), and `renderLocalized` calls `template.Clone()` and re-binds a fresh `FuncMap` for that localizer. `buildFuncMap` merges the localizer's `T`/`Tn` helpers with the app-specific ones (`rawHTML`, `lang`, `lower`, `recordTypeClass`, `rcodeClass`, `formatTTL`, `totalRecords`, `isReverseDNS`). The response always sets `Vary: Accept-Language`. In templates, use `{{T "key"}}` (and `{{rawHTML (T "key")}}` for HTML values).
 
-Template helpers (`buildFuncMap`) include `recordTypeClass`, `rcodeClass`, `formatTTL`, `totalRecords`, `isReverseDNS` — these are referenced by `templates/result.html` and the CSS in `static/css/main.css`. If you add new record types or rcodes, both the helper and the CSS need a class.
+Template helpers (`buildFuncMap`) include `recordTypeClass`, `rcodeClass`, `formatTTL`, `totalRecords`, `isReverseDNS`, `lower` — these are referenced by `templates/result.html` and the CSS in `static/css/main.css`. If you add new record types or rcodes, both the helper and the CSS need a class. `lower` exists so templates can build i18n keys from a type name: `{{T (printf "result.record_type_%s" (lower .Type))}}`.
 
 ### Configuration surface
 

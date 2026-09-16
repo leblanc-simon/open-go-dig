@@ -79,7 +79,10 @@
         <div class="card">
             <div class="ch">
                 <span class="{{recordTypeClass .Type}}">&#9679;</span>
-                <span class="ct">{{.Type}} {{T "result.records"}}</span>
+                <span class="ch-ttl">
+                    <span class="ct">{{.Type}} {{T "result.records"}}</span>
+                    <span class="ct-desc">{{T (printf "result.record_type_%s" (lower .Type))}}</span>
+                </span>
                 <span class="rec-count">{{len .Records}}</span>
             </div>
             <div class="cb">

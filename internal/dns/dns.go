@@ -17,29 +17,6 @@ import (
 // defaultResolvers are used when no resolvers are configured.
 var defaultResolvers = []string{"8.8.8.8:53", "1.1.1.1:53", "9.9.9.9:53"}
 
-// defaultTypes are queried when no specific type is requested.
-var defaultTypes = []uint16{
-	mdns.TypeA, mdns.TypeAAAA, mdns.TypeMX, mdns.TypeNS,
-	mdns.TypeTXT, mdns.TypeCNAME, mdns.TypeSOA, mdns.TypeCAA,
-}
-
-// allSupportedTypes maps type names to their DNS type codes.
-var allSupportedTypes = map[string]uint16{
-	"A":      mdns.TypeA,
-	"AAAA":   mdns.TypeAAAA,
-	"MX":     mdns.TypeMX,
-	"NS":     mdns.TypeNS,
-	"TXT":    mdns.TypeTXT,
-	"CNAME":  mdns.TypeCNAME,
-	"SOA":    mdns.TypeSOA,
-	"PTR":    mdns.TypePTR,
-	"SRV":    mdns.TypeSRV,
-	"CAA":    mdns.TypeCAA,
-	"DNSKEY": mdns.TypeDNSKEY,
-	"DS":     mdns.TypeDS,
-	"TLSA":   mdns.TypeTLSA,
-}
-
 // Client performs DNS queries against configured resolvers.
 type Client struct {
 	Resolvers []string
@@ -131,6 +108,9 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 		msg := new(mdns.Msg)
 		msg.SetQuestion(name, rtype)
 		msg.RecursionDesired = true
+		if dnssecTypes[rtype] {
+			msg.SetEdns0(dnssecUDPSize, true)
+		}
 
 		resp, server, err := c.exchange(ctx, msg, resolvers)
 		if err != nil {
@@ -250,37 +230,114 @@ func parseRR(rr mdns.RR) model.RecordInfo {
 	}
 
 	switch v := rr.(type) {
+	// ── Core ──────────────────────────────────────────────────────────────
 	case *mdns.A:
 		rec.Value = v.A.String()
 	case *mdns.AAAA:
 		rec.Value = v.AAAA.String()
+	case *mdns.CNAME:
+		rec.Value = v.Target
+	case *mdns.DNAME:
+		rec.Value = v.Target
 	case *mdns.MX:
 		rec.Value = v.Mx
 		rec.Priority = v.Preference
 	case *mdns.NS:
 		rec.Value = v.Ns
-	case *mdns.TXT:
-		rec.Value = strings.Join(v.Txt, " ")
-	case *mdns.CNAME:
-		rec.Value = v.Target
+	case *mdns.PTR:
+		rec.Value = v.Ptr
 	case *mdns.SOA:
 		rec.Value = fmt.Sprintf("%s %s %d %d %d %d %d",
 			v.Ns, v.Mbox, v.Serial, v.Refresh, v.Retry, v.Expire, v.Minttl)
-	case *mdns.PTR:
-		rec.Value = v.Ptr
+	case *mdns.TXT:
+		rec.Value = strings.Join(v.Txt, " ")
+
+	// ── Services & discovery ──────────────────────────────────────────────
 	case *mdns.SRV:
 		rec.Value = fmt.Sprintf("%s:%d", v.Target, v.Port)
 		rec.Priority = v.Priority
+	case *mdns.NAPTR:
+		rec.Value = fmt.Sprintf("%d %q %q %q %s",
+			v.Preference, v.Flags, v.Service, v.Regexp, v.Replacement)
+		rec.Priority = v.Order
+	case *mdns.HTTPS:
+		rec.Value = formatSVCB(&v.SVCB)
+		rec.Priority = v.Priority
+	case *mdns.SVCB:
+		rec.Value = formatSVCB(v)
+		rec.Priority = v.Priority
+	case *mdns.URI:
+		rec.Value = fmt.Sprintf("%d %s", v.Weight, v.Target)
+		rec.Priority = v.Priority
+	case *mdns.KX:
+		rec.Value = v.Exchanger
+		rec.Priority = v.Preference
+	case *mdns.AFSDB:
+		rec.Value = v.Hostname
+		rec.Priority = v.Subtype
+
+	// ── Security & certificates ───────────────────────────────────────────
 	case *mdns.CAA:
 		rec.Value = fmt.Sprintf("%d %s \"%s\"", v.Flag, v.Tag, v.Value)
+	case *mdns.TLSA:
+		rec.Value = fmt.Sprintf("%d %d %d %s", v.Usage, v.Selector, v.MatchingType, v.Certificate)
+	case *mdns.SMIMEA:
+		rec.Value = fmt.Sprintf("%d %d %d %s", v.Usage, v.Selector, v.MatchingType, v.Certificate)
+	case *mdns.SSHFP:
+		rec.Value = fmt.Sprintf("%d %d %s", v.Algorithm, v.Type, v.FingerPrint)
+	case *mdns.OPENPGPKEY:
+		rec.Value = "[key]"
+	case *mdns.CERT:
+		rec.Value = fmt.Sprintf("%d %d %d [cert]", v.Type, v.KeyTag, v.Algorithm)
+	case *mdns.IPSECKEY:
+		gateway := v.GatewayHost
+		if gateway == "" && v.GatewayAddr != nil {
+			gateway = v.GatewayAddr.String()
+		}
+		if gateway == "" {
+			gateway = "."
+		}
+		rec.Value = fmt.Sprintf("%d %d %d %s [key]",
+			v.Precedence, v.GatewayType, v.Algorithm, gateway)
+
+	// ── DNSSEC ────────────────────────────────────────────────────────────
 	case *mdns.DNSKEY:
+		rec.Value = fmt.Sprintf("%d %d %d [key]", v.Flags, v.Protocol, v.Algorithm)
+	case *mdns.CDNSKEY:
 		rec.Value = fmt.Sprintf("%d %d %d [key]", v.Flags, v.Protocol, v.Algorithm)
 	case *mdns.DS:
 		rec.Value = fmt.Sprintf("%d %d %d %s", v.KeyTag, v.Algorithm, v.DigestType, v.Digest)
-	case *mdns.TLSA:
-		rec.Value = fmt.Sprintf("%d %d %d %s", v.Usage, v.Selector, v.MatchingType, v.Certificate)
+	case *mdns.CDS:
+		rec.Value = fmt.Sprintf("%d %d %d %s", v.KeyTag, v.Algorithm, v.DigestType, v.Digest)
+	case *mdns.RRSIG:
+		rec.Value = fmt.Sprintf("%s alg=%d tag=%d %s %s-%s",
+			mdns.Type(v.TypeCovered).String(), v.Algorithm, v.KeyTag, v.SignerName,
+			mdns.TimeToString(v.Inception), mdns.TimeToString(v.Expiration))
+	case *mdns.NSEC:
+		rec.Value = strings.TrimSpace(v.NextDomain + " " + formatTypeBitmap(v.TypeBitMap))
+	case *mdns.NSEC3:
+		rec.Value = strings.TrimSpace(fmt.Sprintf("%d %d %d %s %s %s",
+			v.Hash, v.Flags, v.Iterations, formatSalt(v.Salt), v.NextDomain,
+			formatTypeBitmap(v.TypeBitMap)))
+	case *mdns.NSEC3PARAM:
+		rec.Value = fmt.Sprintf("%d %d %d %s",
+			v.Hash, v.Flags, v.Iterations, formatSalt(v.Salt))
+	case *mdns.CSYNC:
+		rec.Value = strings.TrimSpace(fmt.Sprintf("%d %d %s",
+			v.Serial, v.Flags, formatTypeBitmap(v.TypeBitMap)))
+	case *mdns.ZONEMD:
+		rec.Value = fmt.Sprintf("%d %d %d %s", v.Serial, v.Scheme, v.Hash, v.Digest)
+
+	// ── Infrastructure & misc ─────────────────────────────────────────────
+	case *mdns.HINFO:
+		rec.Value = fmt.Sprintf("%q %q", v.Cpu, v.Os)
+	case *mdns.RP:
+		rec.Value = fmt.Sprintf("%s %s", v.Mbox, v.Txt)
+
 	default:
-		// Fallback: use the string representation minus the header
+		// Fallback: use the string representation minus the header. LOC, APL,
+		// DHCID, EUI48/64 and the ILNP family (NID, L32, L64, LP) render fine
+		// this way, and so does any type miekg/dns learns before we do.
 		full := rr.String()
 		hdrStr := hdr.String()
 		rec.Value = strings.TrimPrefix(full, hdrStr)
@@ -288,6 +345,37 @@ func parseRR(rr mdns.RR) model.RecordInfo {
 	}
 
 	return rec
+}
+
+// formatSVCB renders SVCB/HTTPS RDATA as "target key=value …". The priority is
+// carried separately in RecordInfo.Priority; at priority 0 (AliasMode) the
+// parameter list is empty by definition — RFC 9460 §2.4.2.
+func formatSVCB(v *mdns.SVCB) string {
+	parts := make([]string, 0, len(v.Value)+1)
+	parts = append(parts, v.Target)
+	for _, kv := range v.Value {
+		parts = append(parts, fmt.Sprintf("%s=%s", kv.Key(), kv.String()))
+	}
+	return strings.Join(parts, " ")
+}
+
+// formatSalt renders an NSEC3 salt, spelling the empty salt "-" the way the
+// presentation format does (RFC 5155 §3.3) rather than leaving a hole.
+func formatSalt(salt string) string {
+	if salt == "" {
+		return "-"
+	}
+	return salt
+}
+
+// formatTypeBitmap renders the type bitmap carried by NSEC, NSEC3 and CSYNC as
+// a plain list of type names.
+func formatTypeBitmap(bitmap []uint16) string {
+	names := make([]string, 0, len(bitmap))
+	for _, t := range bitmap {
+		names = append(names, mdns.Type(t).String())
+	}
+	return strings.Join(names, " ")
 }
 
 // CheckResolver tests a resolver by sending a simple query and returns the latency.

@@ -193,20 +193,27 @@ func (a *App) buildFuncMap(loc *i18n.Localizer) template.FuncMap {
 		"rawHTML": func(s string) template.HTML {
 			return template.HTML(s)
 		},
-		"lang": func() string { return loc.Lang().String() },
+		"lang":  func() string { return loc.Lang().String() },
+		"lower": strings.ToLower,
 		"recordTypeClass": func(t string) string {
 			switch strings.ToUpper(t) {
 			case "A", "AAAA", "PTR":
 				return "rtype-a"
-			case "MX", "NS", "SRV":
+			case "MX", "NS", "SRV", "NAPTR", "URI", "KX", "AFSDB",
+				"NID", "L32", "L64", "LP":
 				return "rtype-mx"
-			case "TXT", "SOA":
+			case "TXT", "SOA", "HINFO", "RP", "LOC", "APL", "DHCID",
+				"EUI48", "EUI64":
 				return "rtype-txt"
-			case "CNAME":
+			case "CNAME", "DNAME":
 				return "rtype-cname"
-			case "CAA":
+			case "HTTPS", "SVCB":
+				return "rtype-svcb"
+			case "CAA", "TLSA", "SMIMEA", "SSHFP", "OPENPGPKEY", "CERT",
+				"IPSECKEY":
 				return "rtype-caa"
-			case "DNSKEY", "DS", "TLSA":
+			case "DNSKEY", "DS", "CDS", "CDNSKEY", "RRSIG", "NSEC", "NSEC3",
+				"NSEC3PARAM", "CSYNC", "ZONEMD":
 				return "rtype-ds"
 			default:
 				return "rtype-other"
