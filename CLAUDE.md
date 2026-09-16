@@ -41,7 +41,7 @@ Static assets bypass the rate limiter by being registered on the outer `mux` dir
 1. `sanitize` (length cap 253, trim) → `parseTypePrefix` extracts `TYPE:domain` syntax (e.g. `MX:google.com`) → `sanitizeDomain` strips schemes/paths and whitelists `[a-z0-9.\-:]`.
 2. `query.Detect` distinguishes domain / IPv4 / IPv6 (the latter two trigger a reverse PTR query).
 3. Type resolution priority: prefix > `?type=` query param > defaults (`A,AAAA,MX,NS,TXT,CNAME,SOA,CAA,HTTPS`). Reverse queries always force `PTR` and ignore type hints.
-4. `dns.Client.Lookup` iterates the configured resolvers (default `8.8.8.8:53, 1.1.1.1:53, 9.9.9.9:53`) using UDP, falling back to TCP per-query when the response is truncated. Per-query failures become `Warnings` rather than fatal errors so a partial result still renders.
+4. `dns.Client.Lookup` sends **one query per record type, in parallel**, each iterating the configured resolvers (default `8.8.8.8:53, 1.1.1.1:53, 9.9.9.9:53`) using UDP and falling back to TCP per-query when the response is truncated. Per-query failures become `Warnings` rather than fatal errors so a partial result still renders.
 5. Records are grouped by type in `model.RecordGroup`; group order in the response follows the order of types in the request.
 
 ### Record types
@@ -56,6 +56,12 @@ Queries for the DNSSEC family (`dnssecTypes` in `types.go`) are sent with the **
 
 A 30s lookup timeout is applied via `context.WithTimeout` in `App.lookup`, layered on top of the per-resolver `cfg.DNS.Timeout`.
 
+### Parallelism
+
+The per-type queries are fanned out with a `sync.WaitGroup` and bounded by a semaphore sized from `cfg.DNS.MaxParallel` (`OGD_DNS_MAX_PARALLEL`, default 8; `1` restores the old sequential behaviour). The bound is not a nicety: `?type=` accepts all 44 catalogue types, and an unbounded fan-out would make one HTTP request into 44 simultaneous packets aimed at a single resolver. Each goroutine builds its own `*mdns.Msg` and `exchange` creates its own `mdns.Client`, so nothing is shared; answers land in a **pre-sized slice indexed by position**, never appended. Everything else — `rawBuf`, `groupMap`, `Warnings`, and the "first successful response" that fixes `Server`/`Rcode`/`Flags` — is assembled afterwards by walking `recordTypes` in order, so the output is byte-for-byte what the sequential version produced. Keep it that way: appending from the goroutines would make group order, warning order and the reported resolver depend on network timing.
+
+`QueryTime` is wall-clock, so it now reports roughly one round-trip instead of the sum of them. `StatusHandler` probes its resolvers the same way (unbounded — there are three of them), so one dead resolver no longer makes the page wait out every timeout in turn.
+
 ### Templates and i18n
 
 Translations live in `locales/<lang>.yaml` (go-i18n flat format: `message.id: "text"`), embedded and loaded once at startup by `i18n.NewFS(localeFiles, "locales", "en")` in `main.go` into an `*i18n.Bundle` stored on `App.I18n`. The available languages are derived dynamically from the YAML files present, so **adding a language is just dropping a `locales/xx.yaml`** — no code change.
@@ -68,7 +74,7 @@ Template helpers (`buildFuncMap`) include `recordTypeClass`, `rcodeClass`, `form
 
 `internal/config/config.go` is the single source of truth for runtime configuration. It composes the shared `appconf` fragments (`Web`, `CORS`, `Logging`) plus an app-specific `DNS` fragment, each embedded under an `env-prefix:"OGD_"`. Fragment fields declare their env tags **without** the prefix; the prefix is applied at the composition point (cleanenv only supports a static prefix). Config is loaded by `appconf.MustLoad` in `main.go`, which also wires the `-c`, `--help` (with env-var docs) and `--version` flags — **do not** read env vars or flags ad-hoc elsewhere. Adding app-specific configuration means adding a field to the `DNS` fragment (or a new fragment) with both `yaml` and `env` tags.
 
-Env vars follow the fragment tags: `OGD_HOST`, `OGD_PORT`, `OGD_RATE_LIMIT`, `OGD_TRUSTED_PROXIES` (from `appconf.Web`); `OGD_CORS_ALLOWED_ORIGINS`, `OGD_CORS_ALLOW_CREDENTIALS`, … (from `appconf.CORS`); `OGD_LOG_LEVEL`, `OGD_LOG_FORMAT`, `OGD_LOG_SOURCE` (from `appconf.Logging`); `OGD_DNS_RESOLVERS`, `OGD_DNS_TIMEOUT` (from the local `DNS` fragment). Run `./build/open-go-dig --help` for the full list.
+Env vars follow the fragment tags: `OGD_HOST`, `OGD_PORT`, `OGD_RATE_LIMIT`, `OGD_TRUSTED_PROXIES` (from `appconf.Web`); `OGD_CORS_ALLOWED_ORIGINS`, `OGD_CORS_ALLOW_CREDENTIALS`, … (from `appconf.CORS`); `OGD_LOG_LEVEL`, `OGD_LOG_FORMAT`, `OGD_LOG_SOURCE` (from `appconf.Logging`); `OGD_DNS_RESOLVERS`, `OGD_DNS_TIMEOUT`, `OGD_DNS_MAX_PARALLEL` (from the local `DNS` fragment). Run `./build/open-go-dig --help` for the full list.
 
 ## Routes
 
@@ -78,7 +84,7 @@ Env vars follow the fragment tags: `OGD_HOST`, `OGD_PORT`, `OGD_RATE_LIMIT`, `OG
 | GET | `/about` | `AboutHandler` | |
 | GET | `/lookup?query=...&type=...` | `LookupHandler` | HTML; reverse DNS auto-detected from IP input; supports `TYPE:domain` shortcut |
 | GET | `/api/lookup?query=...&type=...` | `ApiHandler` | JSON; same lookup logic; `502` on resolver failure |
-| GET | `/api/status` | `StatusHandler` | per-resolver latency probe |
+| GET | `/api/status` | `StatusHandler` | per-resolver latency probe, run in parallel |
 | GET | `/static/*` | embedded FS | bypasses rate limit |
 
 ## Conventions

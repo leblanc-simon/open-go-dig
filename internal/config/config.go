@@ -21,6 +21,10 @@ type Config struct {
 type DNS struct {
 	Resolvers []string `yaml:"resolvers" env:"DNS_RESOLVERS" env-separator:"," env-description:"Upstream DNS resolvers (host:port), comma-separated"`
 	Timeout   int      `yaml:"timeout"   env:"DNS_TIMEOUT"   env-default:"5" env-description:"Per-resolver query timeout in seconds"`
+	// MaxParallel bounds the record-type queries a single lookup sends at
+	// once. ?type= accepts the whole catalogue, so an unbounded fan-out would
+	// turn one HTTP request into 44 simultaneous packets per resolver.
+	MaxParallel int `yaml:"max_parallel" env:"DNS_MAX_PARALLEL" env-default:"8" env-description:"Maximum record-type queries sent in parallel per lookup"`
 }
 
 // IsDebug reports whether the configured log level enables debug output. It is

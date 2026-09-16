@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	mdns "github.com/miekg/dns"
@@ -17,17 +18,28 @@ import (
 // defaultResolvers are used when no resolvers are configured.
 var defaultResolvers = []string{"8.8.8.8:53", "1.1.1.1:53", "9.9.9.9:53"}
 
+// defaultMaxParallel bounds the per-lookup fan-out when the configuration
+// leaves it unset.
+const defaultMaxParallel = 8
+
 // Client performs DNS queries against configured resolvers.
 type Client struct {
 	Resolvers []string
 	Timeout   time.Duration
-	Debug     bool
+	// MaxParallel caps the number of record-type queries in flight for a
+	// single lookup. Zero or less falls back to defaultMaxParallel.
+	MaxParallel int
+	Debug       bool
 }
 
-// NewClient creates a DNS client with the given resolvers and timeout.
-func NewClient(resolvers []string, timeoutSec int) *Client {
+// NewClient creates a DNS client with the given resolvers, timeout and
+// per-lookup parallelism cap.
+func NewClient(resolvers []string, timeoutSec, maxParallel int) *Client {
 	if len(resolvers) == 0 {
 		resolvers = defaultResolvers
+	}
+	if maxParallel <= 0 {
+		maxParallel = defaultMaxParallel
 	}
 	// Ensure all resolvers have a port
 	for i, r := range resolvers {
@@ -36,8 +48,9 @@ func NewClient(resolvers []string, timeoutSec int) *Client {
 		}
 	}
 	return &Client{
-		Resolvers: resolvers,
-		Timeout:   time.Duration(timeoutSec) * time.Second,
+		Resolvers:   resolvers,
+		Timeout:     time.Duration(timeoutSec) * time.Second,
+		MaxParallel: maxParallel,
 	}
 }
 
@@ -101,18 +114,52 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 	}
 
 	start := time.Now()
+
+	// One query per record type, fanned out but bounded: ?type= accepts the
+	// whole catalogue, and an unbounded fan-out would turn a single HTTP
+	// request into 44 simultaneous packets aimed at the same resolver.
+	// Results are written to a pre-sized slot rather than appended, so the
+	// assembly below stays in the order the types were asked for, whatever
+	// order the answers come back in.
+	type typeResult struct {
+		resp   *mdns.Msg
+		server string
+		err    error
+	}
+	results := make([]typeResult, len(recordTypes))
+
+	limit := c.MaxParallel
+	if limit <= 0 {
+		limit = defaultMaxParallel
+	}
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+
+	for i, rtype := range recordTypes {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			msg := new(mdns.Msg)
+			msg.SetQuestion(name, rtype)
+			msg.RecursionDesired = true
+			if dnssecTypes[rtype] {
+				msg.SetEdns0(dnssecUDPSize, true)
+			}
+
+			resp, server, err := c.exchange(ctx, msg, resolvers)
+			results[i] = typeResult{resp: resp, server: server, err: err}
+		}()
+	}
+	wg.Wait()
+
 	var rawBuf strings.Builder
 	groupMap := make(map[string]*model.RecordGroup)
 
-	for _, rtype := range recordTypes {
-		msg := new(mdns.Msg)
-		msg.SetQuestion(name, rtype)
-		msg.RecursionDesired = true
-		if dnssecTypes[rtype] {
-			msg.SetEdns0(dnssecUDPSize, true)
-		}
-
-		resp, server, err := c.exchange(ctx, msg, resolvers)
+	for i, rtype := range recordTypes {
+		resp, server, err := results[i].resp, results[i].server, results[i].err
 		if err != nil {
 			if c.Debug {
 				log.Printf("[dns] %s %s: %v", name, TypeName(rtype), err)

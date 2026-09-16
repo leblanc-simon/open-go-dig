@@ -59,7 +59,7 @@ func main() {
 	logger := logx.New(cfg.Log)
 	debug := cfg.IsDebug()
 
-	dnsCl := dns.NewClient(cfg.DNS.Resolvers, cfg.DNS.Timeout)
+	dnsCl := dns.NewClient(cfg.DNS.Resolvers, cfg.DNS.Timeout, cfg.DNS.MaxParallel)
 	dnsCl.Debug = debug
 
 	tmplFS, err := fs.Sub(templateFiles, "templates")
