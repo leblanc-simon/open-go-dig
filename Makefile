@@ -7,7 +7,7 @@ ldflags     := -s -w -X 'main.version=$(version)'
 .DEFAULT_GOAL := help
 test_port   := 8099
 
-.PHONY: help debug release clean-build build-linux build-darwin build-windows test-dns
+.PHONY: help debug release clean-build build-linux build-darwin build-windows test test-dns
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -22,6 +22,9 @@ release: clean-build build-linux build-darwin build-windows ## Build the release
 
 clean-build: ## Clean the build directory
 	@rm -fr $(build_path)
+
+test: ## Run the unit and integration tests (no network needed)
+	@go test -race ./...
 
 test-dns: debug ## Build, launch the server and run the DNS test battery
 	@echo "Starting $(app_name) on port $(test_port)..."

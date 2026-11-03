@@ -29,11 +29,6 @@ func (a *App) LookupHandler(w http.ResponseWriter, r *http.Request) {
 	resolverParam := strings.TrimSpace(r.URL.Query().Get("resolver"))
 	info := a.lookup(r.Context(), q, typeParam, resolverParam, loc)
 
-	statusCode := http.StatusOK
-	if info.Error != "" {
-		statusCode = http.StatusBadGateway
-	}
-
 	// Echo the chosen resolver back to the form only if it passed validation.
 	chosen := ""
 	if resolverParam != "" {
@@ -48,7 +43,7 @@ func (a *App) LookupHandler(w http.ResponseWriter, r *http.Request) {
 		ChosenResolver: chosen,
 	}
 
-	if err := a.renderLocalized(w, a.resultTmpl, statusCode, loc, view); err != nil {
+	if err := a.renderLocalized(w, a.resultTmpl, lookupStatus(info), loc, view); err != nil {
 		a.Logger.Error("render result template", "err", err)
 		http.Error(w, loc.T("error.internal"), http.StatusInternalServerError)
 		return

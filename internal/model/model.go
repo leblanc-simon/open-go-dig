@@ -12,16 +12,17 @@ const (
 
 // DNSResult contains all data from a DNS resolution.
 type DNSResult struct {
-	Query       string        // Domain or IP queried
-	QueryType   QueryType     // forward or reverse
-	Server      string        // Resolver used
-	Records     []RecordGroup // Records grouped by type
-	Flags       DNSFlags      // Response flags
-	Rcode       string        // NOERROR, NXDOMAIN, SERVFAIL, etc.
-	QueryTime   time.Duration // Resolution time
-	Error       string        // Non-empty on failure
-	Warnings    []string      // Non-blocking warnings
-	RawResponse string        // Raw response in dig-like format
+	Query        string        // Domain or IP queried
+	QueryType    QueryType     // forward or reverse
+	Server       string        // Resolver used
+	Records      []RecordGroup // Records grouped by type
+	Flags        DNSFlags      // Response flags
+	Rcode        string        // NOERROR, NXDOMAIN, SERVFAIL, etc.
+	QueryTime    time.Duration // Resolution time
+	Error        string        // Non-empty on failure
+	InvalidInput bool          // Error comes from the request, not from DNS
+	Warnings     []string      // Non-blocking warnings
+	RawResponse  string        // Raw response in dig-like format
 }
 
 // RecordGroup groups DNS records of the same type.

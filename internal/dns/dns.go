@@ -3,8 +3,10 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +15,10 @@ import (
 
 	"open-go-dig/internal/model"
 )
+
+// ErrAllQueriesFailed reports a lookup in which no query got any answer. A DNS
+// error such as NXDOMAIN or SERVFAIL is an answer and does not count.
+var ErrAllQueriesFailed = errors.New("every DNS query failed")
 
 // defaultResolvers are used when no resolvers are configured. They carry their
 // operator's name so the picker is legible out of the box.
@@ -63,6 +69,13 @@ func (c *Client) Addrs() []string {
 		out[i] = r.Addr
 	}
 	return out
+}
+
+// IsValidName reports whether name is well-formed in the DNS sense: no empty
+// label, none longer than 63 bytes, 255 bytes at most on the wire.
+func IsValidName(name string) bool {
+	_, ok := mdns.IsDomainName(name)
+	return ok
 }
 
 // ParseRecordTypes converts a comma-separated type string to DNS type codes.
@@ -178,6 +191,10 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 
 	var rawBuf strings.Builder
 	groupMap := make(map[string]*model.RecordGroup)
+	// Each query against a CNAME'd name brings the CNAME back, and DNSSEC queries
+	// may share signatures: the groups list a record once, while the raw view
+	// stays faithful to what each query received.
+	seenRecords := make(map[string]bool)
 
 	for i, rtype := range recordTypes {
 		resp, server, err := results[i].resp, results[i].server, results[i].err
@@ -212,6 +229,12 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 			rawBuf.WriteString(rr.String())
 			rawBuf.WriteString("\n")
 
+			key := recordKey(rr)
+			if seenRecords[key] {
+				continue
+			}
+			seenRecords[key] = true
+
 			rec := parseRR(rr)
 			typeName := rec.Type
 			grp, ok := groupMap[typeName]
@@ -222,6 +245,12 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 			grp.Records = append(grp.Records, rec)
 		}
 		rawBuf.WriteString("\n")
+	}
+
+	// Warnings hold one entry per failed type: as many as types means no answer
+	// at all, which must not pass for an empty but successful result.
+	if len(result.Warnings) == len(recordTypes) {
+		return nil, fmt.Errorf("%w: %s", ErrAllQueriesFailed, result.Warnings[0])
 	}
 
 	result.QueryTime = time.Since(start)
@@ -236,14 +265,30 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 			seen[tn] = true
 		}
 	}
-	// Add any extra types found in answers but not in the query list
-	for tn, grp := range groupMap {
+	// Add any extra types found in answers but not in the query list, sorted:
+	// the map order would reshuffle the page between two identical requests.
+	var extras []string
+	for tn := range groupMap {
 		if !seen[tn] {
-			result.Records = append(result.Records, *grp)
+			extras = append(extras, tn)
 		}
+	}
+	slices.Sort(extras)
+	for _, tn := range extras {
+		result.Records = append(result.Records, *groupMap[tn])
 	}
 
 	return result, nil
+}
+
+// recordKey identifies a record for deduplication. It covers the full RDATA, not
+// RecordInfo.Value, which elides key material: two distinct DNSKEY records can
+// both read "257 3 13 [key]". The TTL is left out, as it counts down between the
+// queries of a same lookup.
+func recordKey(rr mdns.RR) string {
+	c := mdns.Copy(rr)
+	c.Header().Ttl = 0
+	return c.String()
 }
 
 // exchange sends a DNS message trying each resolver in order.
@@ -446,7 +491,9 @@ func formatTypeBitmap(bitmap []uint16) string {
 	return strings.Join(names, " ")
 }
 
-// CheckResolver tests a resolver by sending a simple query and returns the latency.
+// CheckResolver tests a resolver by sending a simple query and returns the
+// latency. The root NS set always exists, so anything but NOERROR means the
+// resolver is reachable but not serving us (SERVFAIL, REFUSED…).
 func CheckResolver(ctx context.Context, server string, timeout time.Duration) (time.Duration, error) {
 	cl := &mdns.Client{
 		Net:     "udp",
@@ -457,6 +504,13 @@ func CheckResolver(ctx context.Context, server string, timeout time.Duration) (t
 	msg.RecursionDesired = true
 
 	start := time.Now()
-	_, _, err := cl.ExchangeContext(ctx, msg, server)
-	return time.Since(start), err
+	resp, _, err := cl.ExchangeContext(ctx, msg, server)
+	latency := time.Since(start)
+	if err != nil {
+		return latency, err
+	}
+	if resp.Rcode != mdns.RcodeSuccess {
+		return latency, fmt.Errorf("resolver answered %s", mdns.RcodeToString[resp.Rcode])
+	}
+	return latency, nil
 }

@@ -25,9 +25,7 @@ func (a *App) ApiHandler(w http.ResponseWriter, r *http.Request) {
 	info := a.lookup(r.Context(), q, typeParam, resolverParam, loc)
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if info.Error != "" {
-		w.WriteHeader(http.StatusBadGateway)
-	}
+	w.WriteHeader(lookupStatus(info))
 
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

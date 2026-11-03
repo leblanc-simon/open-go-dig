@@ -34,13 +34,24 @@ func ParseResolver(entry string) Resolver {
 	if addr == "" {
 		return Resolver{}
 	}
+	return Resolver{Name: name, Addr: NormalizeAddr(addr)}
+}
+
+// NormalizeAddr gives a resolver address its canonical form: a missing port
+// becomes :53, after bracketing a bare IPv6 literal. It is purely textual and
+// does NOT validate that the host is reachable, public or well-formed.
+func NormalizeAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return ""
+	}
 	if _, _, err := net.SplitHostPort(addr); err != nil {
 		if ip := net.ParseIP(addr); ip != nil && ip.To4() == nil {
 			addr = "[" + addr + "]"
 		}
 		addr += ":53"
 	}
-	return Resolver{Name: name, Addr: addr}
+	return addr
 }
 
 // ParseResolvers converts the configured entries, keeping their order and

@@ -3,16 +3,18 @@ package handler
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
+	"golang.org/x/net/idna"
 	i18n "leblanc.io/open-go-base/i18n"
 
 	"open-go-dig/internal/dns"
@@ -46,37 +48,110 @@ func sanitize(raw string) string {
 	return s
 }
 
-// sanitizeDomain cleans a domain name input.
+// idnaProfile converts internationalized names for lookup. Domain-name rules
+// are not strict: underscore labels such as _dmarc are everyday DNS, and the
+// sanitizer enforces its own character set right after.
+var idnaProfile = idna.New(idna.MapForLookup(), idna.BidiRule(), idna.StrictDomainName(false))
+
+// sanitizeDomain reduces an input to the name or IP address to query, or returns
+// "" when it holds neither. A pasted URL keeps only its host; any other stray
+// character refuses the input, as dropping it would query a name nobody typed
+// ("contact@example.com" is not "contactexample.com").
 func sanitizeDomain(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	for _, pfx := range []string{"https://", "http://"} {
 		s = strings.TrimPrefix(s, pfx)
 	}
-	if i := strings.Index(s, "/"); i != -1 {
+	if i := strings.IndexAny(s, "/?#"); i != -1 {
 		s = s[:i]
 	}
-	if i := strings.Index(s, "?"); i != -1 {
-		s = s[:i]
+	s = stripPort(s)
+	if net.ParseIP(s) != nil {
+		return s
 	}
 	s = strings.TrimSuffix(s, ".")
-	var b strings.Builder
+	if !isASCII(s) {
+		ascii, err := idnaProfile.ToASCII(s)
+		if err != nil {
+			return ""
+		}
+		s = ascii
+	}
 	for _, r := range s {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' || r == ':' {
-			b.WriteRune(r)
+		if !isNameChar(r) {
+			return ""
 		}
 	}
-	return b.String()
+	if s == "" || !dns.IsValidName(s) {
+		return ""
+	}
+	return s
+}
+
+// stripPort removes the brackets and the port of a host:port form, leaving
+// IPv6 literals alone. A port that is not a number stays, for the character
+// check of sanitizeDomain to refuse the input.
+func stripPort(s string) string {
+	if strings.HasPrefix(s, "[") {
+		host := strings.TrimSuffix(s[1:], "]")
+		if h, port, err := net.SplitHostPort(s); err == nil && isPort(port) {
+			host = h
+		}
+		if net.ParseIP(host) == nil {
+			return ""
+		}
+		return host
+	}
+	if net.ParseIP(s) != nil {
+		return s
+	}
+	if host, port, err := net.SplitHostPort(s); err == nil && isPort(port) {
+		return host
+	}
+	return s
+}
+
+func isPort(s string) bool {
+	_, err := strconv.ParseUint(s, 10, 16)
+	return err == nil
+}
+
+func isASCII(s string) bool {
+	for i := range len(s) {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
+}
+
+func isNameChar(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.'
 }
 
 // parseTypePrefix extracts an optional TYPE: prefix from the query.
-// Returns the extracted record types and the remaining domain.
+// Returns the extracted record types and the remaining domain. Two inputs read
+// like a prefix without being one: an IPv6 address whose first group spells a
+// type (a::1, aaaa:bbbb::1) and a URL scheme (https://example.com).
 func parseTypePrefix(input string) ([]uint16, string) {
+	if net.ParseIP(input) != nil {
+		return nil, input
+	}
 	if i := strings.Index(input, ":"); i > 0 && i < len(input)-1 {
+		rest := input[i+1:]
+		if strings.HasPrefix(rest, "//") {
+			return nil, input
+		}
 		prefix := strings.ToUpper(input[:i])
+		// ALL is the spelling of "no explicit type": it is consumed without
+		// yielding any, and the lookup falls back to the defaults.
+		if prefix == "ALL" {
+			return nil, rest
+		}
 		// Check if the prefix is a valid record type
 		types := dns.ParseRecordTypes(prefix)
 		if len(types) > 0 {
-			return types, input[i+1:]
+			return types, rest
 		}
 	}
 	return nil, input
@@ -102,8 +177,9 @@ func (a *App) lookup(parentCtx context.Context, raw string, typeParam string, re
 	input := sanitize(raw)
 	if input == "" {
 		return &model.DNSResult{
-			Query: raw,
-			Error: loc.T("error.empty_query"),
+			Query:        raw,
+			Error:        loc.T("error.empty_query"),
+			InvalidInput: true,
 		}
 	}
 
@@ -116,8 +192,9 @@ func (a *App) lookup(parentCtx context.Context, raw string, typeParam string, re
 		matched, ok := a.AllowedResolver(resolverParam)
 		if !ok {
 			return &model.DNSResult{
-				Query: raw,
-				Error: loc.T("error.invalid_resolver"),
+				Query:        raw,
+				Error:        loc.T("error.invalid_resolver"),
+				InvalidInput: true,
 			}
 		}
 		resolverOverride = matched
@@ -129,8 +206,9 @@ func (a *App) lookup(parentCtx context.Context, raw string, typeParam string, re
 
 	if domain == "" {
 		return &model.DNSResult{
-			Query: raw,
-			Error: loc.T("error.invalid_input"),
+			Query:        raw,
+			Error:        loc.T("error.invalid_input"),
+			InvalidInput: true,
 		}
 	}
 
@@ -147,6 +225,13 @@ func (a *App) lookup(parentCtx context.Context, raw string, typeParam string, re
 	isReverse := qt == query.TypeIPv4 || qt == query.TypeIPv6
 
 	result, err := a.DNSClient.Lookup(ctx, domain, recordTypes, isReverse, resolverOverride)
+	if errors.Is(err, dns.ErrAllQueriesFailed) {
+		a.Logger.Warn("lookup without any answer", "query", domain, "err", err)
+		return &model.DNSResult{
+			Query: domain,
+			Error: loc.T("error.resolvers_failed"),
+		}
+	}
 	if err != nil {
 		return &model.DNSResult{
 			Query: domain,
@@ -157,18 +242,17 @@ func (a *App) lookup(parentCtx context.Context, raw string, typeParam string, re
 	return result
 }
 
-// normalizeResolver mirrors the normalization performed by dns.NewClient: a
-// resolver string with no port gets `:53` appended. It is purely textual and
-// does NOT validate that the host is reachable, public, or well-formed.
-func normalizeResolver(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return ""
+// lookupStatus maps a lookup outcome to its HTTP status: the error is either the
+// client's input (400) or the upstream resolvers (502).
+func lookupStatus(info *model.DNSResult) int {
+	switch {
+	case info.Error == "":
+		return http.StatusOK
+	case info.InvalidInput:
+		return http.StatusBadRequest
+	default:
+		return http.StatusBadGateway
 	}
-	if _, _, err := net.SplitHostPort(s); err != nil {
-		s = s + ":53"
-	}
-	return s
 }
 
 // AllowedResolver checks that the user-supplied resolver matches one of the
@@ -184,7 +268,7 @@ func normalizeResolver(s string) string {
 // never apply private-range filtering as a substitute (IPv6 has too many
 // reserved ranges to enumerate safely).
 func (a *App) AllowedResolver(input string) (string, bool) {
-	target := normalizeResolver(input)
+	target := dns.NormalizeAddr(input)
 	if target == "" {
 		return "", false
 	}

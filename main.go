@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -62,69 +64,19 @@ func main() {
 	dnsCl := dns.NewClient(cfg.DNS.Resolvers, cfg.DNS.Timeout, cfg.DNS.MaxParallel)
 	dnsCl.Debug = debug
 
-	tmplFS, err := fs.Sub(templateFiles, "templates")
+	appHandler, err := newHandler(&cfg, dnsCl, logger)
 	if err != nil {
-		logger.Error("templates embed", "err", err)
+		logger.Error("build handler", "err", err)
 		os.Exit(1)
 	}
-
-	// Translations are loaded from the embedded locales/ directory so the
-	// binary stays self-contained (no locales/ folder to deploy alongside it).
-	bundle, err := i18n.NewFS(localeFiles, "locales", defaultLanguage)
-	if err != nil {
-		logger.Error("i18n bundle", "err", err)
-		os.Exit(1)
-	}
-
-	a := &handler.App{
-		DNSClient:  dnsCl,
-		Logger:     logger,
-		I18n:       bundle,
-		TemplateFS: tmplFS,
-		Debug:      debug,
-	}
-	a.InitTemplates()
-
-	// Rate limiter: real client IP is resolved through TrustedProxies, and the
-	// 429 body is a localized JSON payload.
-	limiter, err := ratelimit.New(cfg.Web.RateLimit, cfg.Web.TrustedProxies,
-		ratelimit.WithLimitHandler(rateLimitHandler(bundle)))
-	if err != nil {
-		logger.Error("rate limiter", "err", err)
-		os.Exit(1)
-	}
-
-	// Application routes are rate-limited; static assets are served from a
-	// separate mux that bypasses the limiter so shared page assets do not
-	// exhaust a client's budget.
-	appMux := http.NewServeMux()
-	appMux.HandleFunc("GET /{$}", a.IndexHandler)
-	appMux.HandleFunc("GET /about", a.AboutHandler)
-	appMux.HandleFunc("GET /lookup", a.LookupHandler)
-	appMux.HandleFunc("GET /api/lookup", a.ApiHandler)
-	appMux.HandleFunc("GET /api/status", a.StatusHandler)
-
-	staticSub, err := fs.Sub(staticFiles, "static")
-	if err != nil {
-		logger.Error("static embed", "err", err)
-		os.Exit(1)
-	}
-
-	mux := http.NewServeMux()
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
-	mux.Handle("/", limiter.Middleware(appMux))
 
 	host := cfg.Web.Host
 	port := strconv.Itoa(cfg.Web.Port)
 	addr := host + ":" + port
 
 	srv := &http.Server{
-		Addr: addr,
-		Handler: middleware.SecurityHeaders()(
-			corsx.Middleware(cfg.CORS)(
-				middleware.Link()(mux),
-			),
-		),
+		Addr:         addr,
+		Handler:      appHandler,
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -162,6 +114,65 @@ func main() {
 	logger.Info("server stopped gracefully")
 }
 
+// newHandler builds the complete HTTP pipeline: templates, translations, rate
+// limiter, routes and middlewares. It lives apart from main so the tests exercise
+// the same wiring as production, the middleware order included.
+func newHandler(cfg *config.Config, dnsCl *dns.Client, logger *slog.Logger) (http.Handler, error) {
+	tmplFS, err := fs.Sub(templateFiles, "templates")
+	if err != nil {
+		return nil, fmt.Errorf("templates embed: %w", err)
+	}
+
+	// Translations are loaded from the embedded locales/ directory so the
+	// binary stays self-contained (no locales/ folder to deploy alongside it).
+	bundle, err := i18n.NewFS(localeFiles, "locales", defaultLanguage)
+	if err != nil {
+		return nil, fmt.Errorf("i18n bundle: %w", err)
+	}
+
+	a := &handler.App{
+		DNSClient:  dnsCl,
+		Logger:     logger,
+		I18n:       bundle,
+		TemplateFS: tmplFS,
+		Debug:      cfg.IsDebug(),
+	}
+	a.InitTemplates()
+
+	// Rate limiter: real client IP is resolved through TrustedProxies, and the
+	// 429 body is a localized JSON payload.
+	limiter, err := ratelimit.New(cfg.Web.RateLimit, cfg.Web.TrustedProxies,
+		ratelimit.WithLimitHandler(rateLimitHandler(bundle)))
+	if err != nil {
+		return nil, fmt.Errorf("rate limiter: %w", err)
+	}
+
+	// Application routes are rate-limited; static assets are served from a
+	// separate mux that bypasses the limiter so shared page assets do not
+	// exhaust a client's budget.
+	appMux := http.NewServeMux()
+	appMux.HandleFunc("GET /{$}", a.IndexHandler)
+	appMux.HandleFunc("GET /about", a.AboutHandler)
+	appMux.HandleFunc("GET /lookup", a.LookupHandler)
+	appMux.HandleFunc("GET /api/lookup", a.ApiHandler)
+	appMux.HandleFunc("GET /api/status", a.StatusHandler)
+
+	staticSub, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		return nil, fmt.Errorf("static embed: %w", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+	mux.Handle("/", limiter.Middleware(appMux))
+
+	return middleware.SecurityHeaders()(
+		corsx.Middleware(cfg.CORS)(
+			middleware.Link()(mux),
+		),
+	), nil
+}
+
 // rateLimitHandler renders the 429 response as a localized JSON body. The
 // Retry-After / X-RateLimit-* headers are already set by the limiter.
 func rateLimitHandler(bundle *i18n.Bundle) http.Handler {
@@ -169,6 +180,7 @@ func rateLimitHandler(bundle *i18n.Bundle) http.Handler {
 		loc := bundle.FromRequest(r)
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusTooManyRequests)
-		fmt.Fprintf(w, `{"error":%q}`, loc.T("error.rate_limit"))
+		// %q would not do: Go escapes are not all valid JSON.
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": loc.T("error.rate_limit")})
 	})
 }

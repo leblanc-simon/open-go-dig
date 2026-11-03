@@ -4,6 +4,7 @@ go 1.26.3
 
 require (
 	github.com/miekg/dns v1.1.73
+	golang.org/x/net v0.62.0
 	leblanc.io/open-go-base v1.4.2
 )
 
@@ -17,7 +18,6 @@ require (
 	github.com/realclientip/realclientip-go v1.0.0 // indirect
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
-	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

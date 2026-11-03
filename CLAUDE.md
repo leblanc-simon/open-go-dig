@@ -10,7 +10,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `go run . -c config.yaml` — run from source. With no `-c` flag the binary tries `./config.yaml`, then falls back to environment variables (prefix `OGD_`). The default port is 8080.
 - `go build .` — quick local build. The binary embeds `static/`, `templates/` and `locales/` via `//go:embed` directives in `main.go`, so the built binary is fully self-contained and does not need those directories at runtime.
 
-There is no test suite in this repo and no linter configuration; `go vet ./...` and `go build ./...` are the available correctness checks.
+- `make test` — `go test -race ./...`: unit and integration tests, hermetic (no network).
+- `make test-dns` — builds, starts the server and runs `scripts/test-dns.sh`, which compares the app to `dig` against the **live** resolvers of the local configuration.
+
+There is no linter configuration; `go vet ./...` and `go build ./...` complete the correctness checks.
+
+### Tests
+
+`internal/dnstest` is a scriptable DNS server on the loopback (UDP and TCP on one port), imported by tests only: it produces what a live resolver will not do on demand — truncation, SERVFAIL, silence, slow answers. `main_test.go` drives the real pipeline through `newHandler`, the function `main()` builds its handler with, so the middleware order is under test too. `consistency_test.go` enforces the hand-kept invariants: same keys in every locale, translations for the whole catalogue, every key used by the templates and the Go code exists. A new translation key or record type that breaks those rules fails `make test`.
 
 ## Architecture
 
@@ -38,11 +45,11 @@ Static assets bypass the rate limiter by being registered on the outer `mux` dir
 
 `internal/handler/handler.go` → `App.lookup` is the single entry point used by both the HTML (`lookup.go`) and JSON (`api.go`) handlers. Sequence:
 
-1. `sanitize` (length cap 253, trim) → `parseTypePrefix` extracts `TYPE:domain` syntax (e.g. `MX:google.com`) → `sanitizeDomain` strips schemes/paths and whitelists `[a-z0-9.\-:]`.
+1. `sanitize` (length cap 253, trim) → `parseTypePrefix` extracts `TYPE:domain` syntax (e.g. `MX:google.com`; an IPv6 address like `a::1` or a URL like `https://…` is **not** a prefix, `ALL:` means the defaults) → `sanitizeDomain` reduces a pasted URL to its host (scheme, path, query, fragment, port), converts an IDN to punycode (`golang.org/x/net/idna`) and **refuses** anything else outside `[a-z0-9._-]` or malformed in DNS terms, rather than dropping characters. A refused input never reaches a resolver.
 2. `query.Detect` distinguishes domain / IPv4 / IPv6 (the latter two trigger a reverse PTR query).
 3. Type resolution priority: prefix > `?type=` query param > defaults (`A,AAAA,MX,NS,TXT,CNAME,SOA,CAA,HTTPS`, exposed as `dns.DefaultTypeNames()`). Reverse queries always force `PTR` and ignore type hints. **Several types can be asked for at once**, in either spelling: repeated (`?type=MX&type=NS`, what the checkbox picker submits) or comma-separated (`?type=MX,NS`, and `MX,NS:example.com` as a prefix). `handler.requestedTypes` joins the repeated values into one list before `dns.ParseRecordTypes`, which deduplicates and drops empty entries — the picker's default chip submits `value=""`, so an explicit type always wins over it when JS is unavailable.
-4. `dns.Client.Lookup` sends **one query per record type, in parallel**, each iterating the configured resolvers (default `8.8.8.8:53, 1.1.1.1:53, 9.9.9.9:53`) using UDP and falling back to TCP per-query when the response is truncated. Per-query failures become `Warnings` rather than fatal errors so a partial result still renders.
-5. Records are grouped by type in `model.RecordGroup`; group order in the response follows the order of types in the request.
+4. `dns.Client.Lookup` sends **one query per record type, in parallel**, each iterating the configured resolvers (default `8.8.8.8:53, 1.1.1.1:53, 9.9.9.9:53`) using UDP and falling back to TCP per-query when the response is truncated. Per-query failures become `Warnings` rather than fatal errors so a partial result still renders; when **every** query fails, `Lookup` returns `ErrAllQueriesFailed` and the request ends in a 502. Failover only happens on network errors: SERVFAIL or REFUSED is an answer, and is shown as such.
+5. Records are grouped by type in `model.RecordGroup`; group order in the response follows the order of types in the request, then the types nobody asked for (CNAME, RRSIG…) sorted by name. A record is listed once even when several queries bring it back — `recordKey` compares the full RDATA without the TTL, since `Value` elides key material. `RawResponse` stays faithful and keeps every copy.
 
 ### Record types
 
@@ -86,9 +93,9 @@ Env vars follow the fragment tags: `OGD_HOST`, `OGD_PORT`, `OGD_RATE_LIMIT`, `OG
 |---|---|---|---|
 | GET | `/` | `IndexHandler` | search form |
 | GET | `/about` | `AboutHandler` | |
-| GET | `/lookup?query=...&type=...&resolver=...` | `LookupHandler` | HTML; reverse DNS auto-detected from IP input; supports `TYPE:domain` shortcut; `type` repeatable |
-| GET | `/api/lookup?query=...&type=...&resolver=...` | `ApiHandler` | JSON; same lookup logic; `502` on resolver failure |
-| GET | `/api/status` | `StatusHandler` | per-resolver latency probe, run in parallel |
+| GET | `/lookup?query=...&type=...&resolver=...` | `LookupHandler` | HTML; reverse DNS auto-detected from IP input; supports `TYPE:domain` shortcut; `type` repeatable; same status codes as the API |
+| GET | `/api/lookup?query=...&type=...&resolver=...` | `ApiHandler` | JSON; same lookup logic; `400` on invalid input or unknown resolver, `502` when no resolver answers |
+| GET | `/api/status` | `StatusHandler` | per-resolver latency probe, run in parallel; a resolver answering anything but NOERROR counts as `error` |
 | GET | `/static/*` | embedded FS | bypasses rate limit |
 
 ## Conventions
