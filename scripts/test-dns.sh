@@ -57,12 +57,14 @@ norm() {
 
 count_lines() { printf '%s' "$1" | grep -c . ; }
 
-# Chaque cas : "libellé|query|type|mode"
+# Chaque cas : "libellé|query|type|mode[|résolveur]"
 #   type  : type d'enregistrement (vide = défauts de l'app ; ou préfixe TYPE: dans query)
 #   mode  : exact   → l'ensemble des valeurs app doit égaler celui de dig
 #           count   → app et dig doivent tous deux renvoyer au moins un record
 #                     (formats non directement comparables : SRV, anycast…)
 #           empty   → app et dig doivent tous deux ne rien renvoyer (NXDOMAIN)
+#   résolveur : optionnel, host:port à imposer quand la réponse dépend du résolveur.
+#               Il doit figurer dans la configuration du serveur testé.
 CASES=(
 	"NS (set stable)|google.com|NS|exact"
 	"MX (priorité + hôte)|google.com|MX|exact"
@@ -81,7 +83,7 @@ CASES=(
 	"Reverse IPv6 (PTR)|2606:4700:4700::1111|PTR|exact"
 	"NXDOMAIN|nxdomain-xyz-does-not-exist-ogd.example|A|empty"
 	"HTTPS (ALPN/ECH)|cloudflare.com|HTTPS|count"
-	"SVCB (résolveur DoH/DoT)|_dns.resolver.arpa|SVCB|count"
+	"SVCB (résolveur DoH/DoT)|_dns.resolver.arpa|SVCB|count|8.8.8.8:53"
 	"NAPTR (ENUM/SIP)|columbia.edu|NAPTR|exact"
 	"SSHFP (empreinte SSH)|salsa.debian.org|SSHFP|count"
 	"TLSA (DANE)|_25._tcp.mail.ietf.org|TLSA|count"
@@ -102,12 +104,15 @@ fi
 printf '%s\n' "------------------------------------------------------------------------------------"
 
 for entry in "${CASES[@]}"; do
-	IFS='|' read -r label query type mode <<<"$entry"
+	IFS='|' read -r label query type mode resolver <<<"$entry"
 
 	# Requête app (avec le type si fourni ; sinon on laisse le préfixe agir).
 	url="$API?query=$(jq -rn --arg q "$query" '$q|@uri')"
 	if [ -n "$type" ]; then
 		url="$url&type=$(jq -rn --arg t "$type" '$t|@uri')"
+	fi
+	if [ -n "$resolver" ]; then
+		url="$url&resolver=$(jq -rn --arg r "$resolver" '$r|@uri')"
 	fi
 
 	body="$(curl -fsS --max-time 30 "$url" 2>/dev/null)"
@@ -136,7 +141,7 @@ for entry in "${CASES[@]}"; do
 	fi
 
 	# ── Avec dig : interroge le MÊME résolveur que l'app ───────────────────
-	server="$(echo "$body" | jq -r '.server // ""' | sed 's/:[0-9]*$//')"
+	server="$(echo "$body" | jq -r '.server // ""' | sed 's/:[0-9]*$//; s/^\[//; s/\]$//')"
 	[ -z "$server" ] || [ "$server" = "null" ] && server="8.8.8.8"
 
 	# Détermine type et domaine pour dig (gère le préfixe TYPE:domaine).
