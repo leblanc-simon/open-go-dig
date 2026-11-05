@@ -88,7 +88,7 @@ func ParseRecordTypes(typeStr string) []uint16 {
 	// goroutines and that many identical cards.
 	var types []uint16
 	seen := make(map[uint16]bool)
-	for _, t := range strings.Split(typeStr, ",") {
+	for t := range strings.SplitSeq(typeStr, ",") {
 		t = strings.TrimSpace(strings.ToUpper(t))
 		// An empty entry is what the picker's default chip submits; "ALL" is
 		// the historical spelling of the same intent. Both mean "no explicit
@@ -110,7 +110,7 @@ func ParseRecordTypes(typeStr string) []uint16 {
 // is a type ParseRecordTypes understands. ParseRecordTypes drops the others, which
 // suits a list already known good but would answer "FOO" with the defaults.
 func ValidRecordTypes(typeStr string) bool {
-	for _, t := range strings.Split(typeStr, ",") {
+	for t := range strings.SplitSeq(typeStr, ",") {
 		t = strings.TrimSpace(strings.ToUpper(t))
 		if t == "ALL" || t == "" {
 			continue
@@ -186,9 +186,7 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 	var wg sync.WaitGroup
 
 	for i, rtype := range recordTypes {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -201,7 +199,7 @@ func (c *Client) Lookup(ctx context.Context, name string, recordTypes []uint16, 
 
 			resp, server, err := c.exchange(ctx, msg, resolvers)
 			results[i] = typeResult{resp: resp, server: server, err: err}
-		}()
+		})
 	}
 	wg.Wait()
 

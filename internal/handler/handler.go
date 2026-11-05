@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net"
 	"net/http"
 	"strconv"
@@ -347,9 +348,7 @@ func (a *App) buildFuncMap(loc *i18n.Localizer) template.FuncMap {
 		},
 	}
 	// Merge the localizer's T / Tn helpers on top of the app-specific ones.
-	for k, v := range loc.FuncMap() {
-		fm[k] = v
-	}
+	maps.Copy(fm, loc.FuncMap())
 	return fm
 }
 

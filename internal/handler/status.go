@@ -24,9 +24,7 @@ func (a *App) StatusHandler(w http.ResponseWriter, r *http.Request) {
 	resolvers := make([]resolverStatus, len(a.DNSClient.Resolvers))
 	var wg sync.WaitGroup
 	for i, srv := range a.DNSClient.Resolvers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			latency, err := dns.CheckResolver(r.Context(), srv.Addr, a.DNSClient.Timeout)
 			status := "ok"
 			if err != nil {
@@ -37,7 +35,7 @@ func (a *App) StatusHandler(w http.ResponseWriter, r *http.Request) {
 				Latency: latency.String(),
 				Status:  status,
 			}
-		}()
+		})
 	}
 	wg.Wait()
 

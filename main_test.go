@@ -487,7 +487,7 @@ func TestPagesRenderInEveryLanguage(t *testing.T) {
 
 func varies(resp *http.Response, header string) bool {
 	for _, value := range resp.Header.Values("Vary") {
-		for _, h := range strings.Split(value, ",") {
+		for h := range strings.SplitSeq(value, ",") {
 			if strings.EqualFold(strings.TrimSpace(h), header) {
 				return true
 			}
