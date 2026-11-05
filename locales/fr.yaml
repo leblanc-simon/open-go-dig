@@ -54,6 +54,10 @@ result.view_json: "Voir en JSON (API)"
 result.resolver_status: "État des résolveurs"
 result.query_time: "Temps de requête"
 result.resolver: "Résolveur"
+result.column_name: "Nom"
+result.column_ttl: "TTL"
+result.column_class: "Classe"
+result.column_value: "Valeur"
 
 # RCODE descriptions
 result.rcode_noerror: "Pas d'erreur"
@@ -127,3 +131,10 @@ error.dns_failed: "Résolution DNS échouée : %v"
 error.resolvers_failed: "Aucune réponse des résolveurs DNS : injoignables ou délai dépassé. Réessayez ou choisissez-en un autre."
 error.invalid_resolver: "Résolveur inconnu : choisissez-en un dans la liste"
 error.invalid_type: "Type d'enregistrement inconnu : vérifiez l'orthographe ou choisissez-en un dans la liste"
+
+# Durées
+duration.days: "{{.N}}\u00a0j"
+duration.hours: "{{.N}}\u00a0h"
+duration.minutes: "{{.N}}\u00a0min"
+duration.seconds: "{{.N}}\u00a0s"
+duration.list: "{{.Head}} {{.Tail}}"

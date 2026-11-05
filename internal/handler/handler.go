@@ -323,24 +323,7 @@ func (a *App) buildFuncMap(loc *i18n.Localizer) template.FuncMap {
 		"isReverseDNS": func(qt model.QueryType) bool {
 			return qt == model.QueryReverse
 		},
-		"formatTTL": func(ttl uint32) string {
-			d := time.Duration(ttl) * time.Second
-			if d >= 24*time.Hour {
-				days := d / (24 * time.Hour)
-				rem := d % (24 * time.Hour)
-				if rem > 0 {
-					return fmt.Sprintf("%dd%s", days, rem)
-				}
-				return fmt.Sprintf("%dd", days)
-			}
-			if d >= time.Hour {
-				return fmt.Sprintf("%s", d)
-			}
-			if d >= time.Minute {
-				return fmt.Sprintf("%s", d)
-			}
-			return fmt.Sprintf("%ds", ttl)
-		},
+		"formatTTL": func(ttl uint32) string { return formatTTL(loc, ttl) },
 		"rcodeClass": func(rcode string) string {
 			switch strings.ToUpper(rcode) {
 			case "NOERROR":
@@ -368,6 +351,42 @@ func (a *App) buildFuncMap(loc *i18n.Localizer) template.FuncMap {
 		fm[k] = v
 	}
 	return fm
+}
+
+// ttlUnits lists the units of a displayed TTL, largest first, with their
+// translation keys.
+var ttlUnits = []struct {
+	seconds uint32
+	key     string
+}{
+	{86400, "duration.days"},
+	{3600, "duration.hours"},
+	{60, "duration.minutes"},
+	{1, "duration.seconds"},
+}
+
+// formatTTL renders a TTL in the request language, leaving out the zero units:
+// 90000 reads "1d 1h". How two quantities combine belongs to the language too,
+// hence duration.list rather than a space in the code.
+func formatTTL(loc *i18n.Localizer, ttl uint32) string {
+	out := ""
+	for _, u := range ttlUnits {
+		n := ttl / u.seconds
+		if n == 0 {
+			continue
+		}
+		ttl %= u.seconds
+		part := loc.T(u.key, map[string]any{"N": n})
+		if out == "" {
+			out = part
+		} else {
+			out = loc.T("duration.list", map[string]any{"Head": out, "Tail": part})
+		}
+	}
+	if out == "" {
+		return loc.T("duration.seconds", map[string]any{"N": 0})
+	}
+	return out
 }
 
 func (a *App) InitTemplates() {

@@ -14,7 +14,7 @@ import (
 var (
 	localeKeyRe   = regexp.MustCompile(`(?m)^([a-z0-9_.]+):`)
 	templateKeyRe = regexp.MustCompile(`\b(?:T|Tn) +"([a-z0-9_.]+)"`)
-	goKeyRe       = regexp.MustCompile(`\.T\("([a-z0-9_.]+)"\)`)
+	goKeyRe       = regexp.MustCompile(`\.T\("([a-z0-9_.]+)"[,)]`)
 )
 
 // embeddedLocales returns the keys of each embedded locale file, by file name.

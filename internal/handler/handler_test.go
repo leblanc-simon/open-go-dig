@@ -326,21 +326,33 @@ func TestRcodeClass(t *testing.T) {
 
 func TestFormatTTL(t *testing.T) {
 	a := newTestApp(t)
-	format := a.buildFuncMap(a.I18n.Localizer("", ""))["formatTTL"].(func(uint32) string)
-	tests := map[uint32]string{
-		0:      "0s",
-		59:     "59s",
-		60:     "1m0s",
-		3599:   "59m59s",
-		3600:   "1h0m0s",
-		86399:  "23h59m59s",
-		86400:  "1d",
-		90000:  "1d1h0m0s",
-		172800: "2d",
+	tests := map[string]map[uint32]string{
+		"en": {
+			0:      "0s",
+			59:     "59s",
+			60:     "1m",
+			90:     "1m 30s",
+			3599:   "59m 59s",
+			3600:   "1h",
+			86399:  "23h 59m 59s",
+			86400:  "1d",
+			90000:  "1d 1h",
+			90061:  "1d 1h 1m 1s",
+			172800: "2d",
+		},
+		"fr": {
+			0:     "0\u00a0s",
+			90:    "1\u00a0min 30\u00a0s",
+			3600:  "1\u00a0h",
+			90061: "1\u00a0j 1\u00a0h 1\u00a0min 1\u00a0s",
+		},
 	}
-	for ttl, want := range tests {
-		if got := format(ttl); got != want {
-			t.Errorf("formatTTL(%d) = %q, want %q", ttl, got, want)
+	for lang, cases := range tests {
+		format := a.buildFuncMap(a.I18n.Localizer(lang, ""))["formatTTL"].(func(uint32) string)
+		for ttl, want := range cases {
+			if got := format(ttl); got != want {
+				t.Errorf("%s: formatTTL(%d) = %q, want %q", lang, ttl, got, want)
+			}
 		}
 	}
 }

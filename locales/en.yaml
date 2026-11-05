@@ -54,6 +54,10 @@ result.view_json: "View as JSON (API)"
 result.resolver_status: "Resolver status"
 result.query_time: "Query time"
 result.resolver: "Resolver"
+result.column_name: "Name"
+result.column_ttl: "TTL"
+result.column_class: "Class"
+result.column_value: "Value"
 
 # RCODE descriptions
 result.rcode_noerror: "No Error"
@@ -126,3 +130,10 @@ error.dns_failed: "DNS resolution failed: %v"
 error.resolvers_failed: "No answer from the DNS resolvers: unreachable or timed out. Try again or pick another one."
 error.invalid_resolver: "Unknown resolver: please pick one from the list"
 error.invalid_type: "Unknown record type: check the spelling or pick one from the list"
+
+# Durations
+duration.days: "{{.N}}d"
+duration.hours: "{{.N}}h"
+duration.minutes: "{{.N}}m"
+duration.seconds: "{{.N}}s"
+duration.list: "{{.Head}} {{.Tail}}"
