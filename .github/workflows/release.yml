@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: make test
+
+      # The version comes from the tag that triggered the run: `git describe`,
+      # the Makefile's default, depends on the tags present in the clone.
+      - name: Build
+        run: make release version="$GITHUB_REF_NAME"
+
+      - name: Publish
+        run: gh release create "$GITHUB_REF_NAME" build/* --verify-tag --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

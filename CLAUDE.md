@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Build & run
 
 - `make debug` — build a development binary into `build/open-go-dig` (no ldflags).
-- `make release` — cross-compile release binaries for linux/darwin/windows (amd64/arm64/386). Version is taken from `git describe --tags --abbrev=0`, fallback `develop`, injected via `-X main.version=...`.
+- `make release` — cross-compile release binaries for linux/darwin/windows (amd64/arm64/386). Version is taken from `git describe --tags --abbrev=0`, fallback `develop`, injected via `-X main.version=...`. Pushing a `v*` tag runs `.github/workflows/release.yml`: tests, then `make release version=<tag>`, then a GitHub release carrying the binaries.
 - `make clean-build` — wipe `build/`.
 - `go run . -c config.yaml` — run from source. With no `-c` flag the binary tries `./config.yaml`, then falls back to environment variables (prefix `OGD_`). The default port is 8080.
 - `go build .` — quick local build. The binary embeds `static/`, `templates/` and `locales/` via `//go:embed` directives in `main.go`, so the built binary is fully self-contained and does not need those directories at runtime.
