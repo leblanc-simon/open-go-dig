@@ -178,6 +178,7 @@ func newHandler(cfg *config.Config, dnsCl *dns.Client, logger *slog.Logger) (htt
 func rateLimitHandler(bundle *i18n.Bundle) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		loc := bundle.FromRequest(r)
+		w.Header().Add("Vary", "Accept-Language")
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusTooManyRequests)
 		// %q would not do: Go escapes are not all valid JSON.

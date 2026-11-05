@@ -396,7 +396,8 @@ func (a *App) renderLocalized(w http.ResponseWriter, tmpl *template.Template, st
 		return err
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Vary", "Accept-Language")
+	// Add, not Set: CORS has already registered its own Vary: Origin.
+	w.Header().Add("Vary", "Accept-Language")
 	if statusCode != 0 && statusCode != http.StatusOK {
 		w.WriteHeader(statusCode)
 	}

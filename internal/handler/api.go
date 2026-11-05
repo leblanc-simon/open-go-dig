@@ -9,6 +9,8 @@ import (
 // ApiHandler returns structured data as JSON.
 func (a *App) ApiHandler(w http.ResponseWriter, r *http.Request) {
 	loc := a.localizer(r)
+	// Every body below, errors included, is in the request language.
+	w.Header().Add("Vary", "Accept-Language")
 
 	q := strings.TrimSpace(r.URL.Query().Get("query"))
 	if q == "" {

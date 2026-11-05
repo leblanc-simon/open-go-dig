@@ -471,8 +471,8 @@ func TestPagesRenderInEveryLanguage(t *testing.T) {
 				if !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/html") {
 					t.Errorf("Content-Type = %q", resp.Header.Get("Content-Type"))
 				}
-				if resp.Header.Get("Vary") != "Accept-Language" {
-					t.Errorf("Vary = %q", resp.Header.Get("Vary"))
+				if !varies(resp, "Accept-Language") {
+					t.Errorf("Vary = %q", resp.Header.Values("Vary"))
 				}
 				if !strings.Contains(body, `lang="`+lang+`"`) {
 					t.Errorf("page not marked as %s", lang)
@@ -481,6 +481,50 @@ func TestPagesRenderInEveryLanguage(t *testing.T) {
 					t.Errorf("untranslated keys: %v", keys)
 				}
 			})
+		}
+	}
+}
+
+func varies(resp *http.Response, header string) bool {
+	for _, value := range resp.Header.Values("Vary") {
+		for _, h := range strings.Split(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(h), header) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Every response whose text depends on the language must say so, without taking
+// the Origin that CORS varies on away from a shared cache.
+func TestLocalizedResponsesVary(t *testing.T) {
+	zone := fixtureZone(t)
+	app := startApp(t, []string{zone.Addr})
+	limited := startApp(t, []string{zone.Addr}, withRateLimit(1))
+
+	get(t, limited.URL+"/")
+	tooMany, _ := get(t, limited.URL+"/", "Origin", allowedOrigin)
+	if tooMany.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", tooMany.StatusCode)
+	}
+	responses := map[string]*http.Response{"429": tooMany}
+	for name, target := range map[string]string{
+		"index":         app.URL + "/",
+		"about":         app.URL + "/about",
+		"page":          app.URL + "/lookup?query=example.com&type=A",
+		"page error":    app.URL + "/lookup?query=" + url.QueryEscape("<script>"),
+		"api":           apiURL(app.URL, "example.com", "type", "A"),
+		"api error":     apiURL(app.URL, "<script>"),
+		"missing query": app.URL + "/api/lookup",
+	} {
+		responses[name], _ = get(t, target, "Origin", allowedOrigin)
+	}
+	for name, resp := range responses {
+		for _, header := range []string{"Accept-Language", "Origin"} {
+			if !varies(resp, header) {
+				t.Errorf("%s: Vary = %q, missing %s", name, resp.Header.Values("Vary"), header)
+			}
 		}
 	}
 }
