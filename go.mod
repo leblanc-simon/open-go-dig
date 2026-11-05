@@ -1,6 +1,6 @@
 module open-go-dig
 
-go 1.26.3
+go 1.27.3
 
 require (
 	github.com/miekg/dns v1.1.73

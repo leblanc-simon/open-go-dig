@@ -23,7 +23,7 @@ There is no linter configuration; `go vet ./...` and `go build ./...` complete t
 
 OpenGoDig is a single-binary web frontend for DNS lookups (think `dig` in a browser) plus a JSON API. **Hard architectural rules** (enforced by `docs/prompt-open-go-dig.md`, the original spec):
 
-- Go 1.26+, **standard library only** for HTTP — no gin/echo/chi. Routing uses `http.NewServeMux` with the `"GET /path"` pattern syntax from Go 1.22+.
+- Go 1.27+, **standard library only** for HTTP — no gin/echo/chi. Routing uses `http.NewServeMux` with the `"GET /path"` pattern syntax from Go 1.22+.
 - Cross-cutting concerns are delegated to the shared **`leblanc.io/open-go-base`** module: `appconf` (config), `corsx` (CORS), `ratelimit` (per-IP limiter), `logx` (slog logger), `i18n` (translations). `miekg/dns` remains the DNS client. Do not re-implement these locally and do not introduce a web framework or a CSS/JS framework — the frontend is hand-rolled.
 - i18n uses `base/i18n` via `i18n.NewFS` fed by an **embedded** `locales/` directory (`//go:embed locales` in `main.go`), so the binary stays self-contained — `base/i18n.New` (disk-based) is deliberately **not** used.
 - Templates, static assets and locales are embedded via `embed.FS` in `main.go`; never read them from disk at runtime.
