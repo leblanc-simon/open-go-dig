@@ -141,6 +141,7 @@ func TestParseTypePrefix(t *testing.T) {
 		// No prefix at all.
 		{"example.com", nil, "example.com"},
 		{"FOO:example.com", nil, "FOO:example.com"},
+		{"A,FOO:example.com", nil, "A,FOO:example.com"},
 		{":example.com", nil, ":example.com"},
 		{"MX:", nil, "MX:"},
 

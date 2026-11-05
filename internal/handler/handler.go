@@ -150,7 +150,7 @@ func parseTypePrefix(input string) ([]uint16, string) {
 		}
 		// Check if the prefix is a valid record type
 		types := dns.ParseRecordTypes(prefix)
-		if len(types) > 0 {
+		if len(types) > 0 && dns.ValidRecordTypes(prefix) {
 			return types, rest
 		}
 	}
@@ -217,6 +217,13 @@ func (a *App) lookup(parentCtx context.Context, raw string, typeParam string, re
 	if len(prefixTypes) > 0 {
 		recordTypes = prefixTypes
 	} else if typeParam != "" {
+		if !dns.ValidRecordTypes(typeParam) {
+			return &model.DNSResult{
+				Query:        raw,
+				Error:        loc.T("error.invalid_type"),
+				InvalidInput: true,
+			}
+		}
 		recordTypes = dns.ParseRecordTypes(typeParam)
 	}
 

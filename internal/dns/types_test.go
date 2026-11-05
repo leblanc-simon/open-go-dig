@@ -7,6 +7,30 @@ import (
 	mdns "github.com/miekg/dns"
 )
 
+func TestValidRecordTypes(t *testing.T) {
+	tests := map[string]bool{
+		"":        true,
+		"ALL":     true,
+		",":       true,
+		"MX":      true,
+		"mx, ns":  true,
+		",MX":     true,
+		"ALL,MX":  true,
+		"FOO":     false,
+		"MX,FOO":  false,
+		"ANY":     false,
+		"AXFR":    false,
+		"MX;NS":   false,
+		"MX NS":   false,
+		"TYPE255": false,
+	}
+	for input, want := range tests {
+		if got := ValidRecordTypes(input); got != want {
+			t.Errorf("ValidRecordTypes(%q) = %v, want %v", input, got, want)
+		}
+	}
+}
+
 func TestParseRecordTypes(t *testing.T) {
 	tests := []struct {
 		input string

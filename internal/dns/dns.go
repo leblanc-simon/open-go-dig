@@ -106,6 +106,22 @@ func ParseRecordTypes(typeStr string) []uint16 {
 	return types
 }
 
+// ValidRecordTypes reports whether every entry of a comma-separated type string
+// is a type ParseRecordTypes understands. ParseRecordTypes drops the others, which
+// suits a list already known good but would answer "FOO" with the defaults.
+func ValidRecordTypes(typeStr string) bool {
+	for _, t := range strings.Split(typeStr, ",") {
+		t = strings.TrimSpace(strings.ToUpper(t))
+		if t == "ALL" || t == "" {
+			continue
+		}
+		if _, ok := allSupportedTypes[t]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // TypeName returns the string name for a DNS type code.
 func TypeName(t uint16) string {
 	return mdns.TypeToString[t]

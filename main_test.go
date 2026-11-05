@@ -190,7 +190,6 @@ func TestLookupInputs(t *testing.T) {
 		{name: "repeated param", query: "example.com", extra: []string{"type", "MX", "type", "NS"}, wantQuery: "example.com", wantName: "example.com.", wantTypes: []string{"MX", "NS"}},
 		{name: "default chip plus type", query: "example.com", extra: []string{"type", "", "type", "MX"}, wantQuery: "example.com", wantName: "example.com.", wantTypes: []string{"MX"}},
 		{name: "ALL param", query: "example.com", extra: []string{"type", "ALL"}, wantQuery: "example.com", wantName: "example.com.", wantTypes: defaults},
-		{name: "unknown param", query: "example.com", extra: []string{"type", "FOO"}, wantQuery: "example.com", wantName: "example.com.", wantTypes: defaults},
 
 		{name: "reverse IPv4", query: "8.8.8.8", wantQuery: "8.8.8.8", wantName: "8.8.8.8.in-addr.arpa.", wantTypes: []string{"PTR"}},
 		{name: "reverse ignores type", query: "8.8.8.8", extra: []string{"type", "MX"}, wantQuery: "8.8.8.8", wantName: "8.8.8.8.in-addr.arpa.", wantTypes: []string{"PTR"}},
@@ -231,6 +230,7 @@ func TestInvalidInputsAreBadRequests(t *testing.T) {
 		"exa mple.com",
 		"contact@example.com",
 		"FOO:example.com",
+		"A,FOO:example.com",
 		"a..b.example",
 		"<script>",
 		".",
@@ -260,6 +260,33 @@ func TestInvalidInputsAreBadRequests(t *testing.T) {
 	}
 	if got := zone.Queries(); len(got) != 0 {
 		t.Errorf("queries sent for invalid inputs: %+v", got)
+	}
+}
+
+// A type nobody can query is refused like the TYPE: prefix refuses it, rather
+// than silently answering with the defaults.
+func TestUnknownTypesAreBadRequests(t *testing.T) {
+	zone := fixtureZone(t)
+	app := startApp(t, []string{zone.Addr})
+	want := localizer(t, "fr").T("error.invalid_type")
+
+	for _, query := range []string{"type=FOO", "type=A,FOO", "type=A&type=FOO", "type=ANY"} {
+		t.Run(query, func(t *testing.T) {
+			target := "?query=example.com&lang=fr&" + query
+			resp, body := get(t, app.URL+"/api/lookup"+target)
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("API status = %d, want 400", resp.StatusCode)
+			}
+			if got := decodeAPI(t, body).Error; got != want {
+				t.Errorf("API error = %q, want %q", got, want)
+			}
+			if resp, _ := get(t, app.URL+"/lookup"+target); resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("HTML status = %d, want 400", resp.StatusCode)
+			}
+		})
+	}
+	if got := zone.Queries(); len(got) != 0 {
+		t.Errorf("queries sent for unknown types: %+v", got)
 	}
 }
 

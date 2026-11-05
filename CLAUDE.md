@@ -57,7 +57,7 @@ Static assets bypass the rate limiter by being registered on the outer `mux` dir
 
 Adding a record type means: one entry in `TypeCatalog`, a `result.record_type_<lowercase name>` key in **every** `locales/*.yaml`, a branch in `recordTypeClass` (`internal/handler/handler.go`) plus its CSS class, and optionally a `case` in `parseRR` — without one, the record still renders through the generic `rr.String()` fallback.
 
-The picker is a set of **checkboxes**, not radios: the first chip (`index.type_default`, "Panorama"/"Overview") stands for `defaultTypes` and is mutually exclusive with the rest — `static/js/index.js` enforces that in both directions and re-checks it when the selection empties. Its tooltip is built from `dns.DefaultTypeNames()` (`indexView.DefaultTypeList`), so the chip can never over-promise: it is a 9-type sweep, **not** the 44-type catalogue. `?type=ALL` is still accepted and still means "the defaults".
+The picker is a set of **checkboxes**, not radios: the first chip (`index.type_default`, "Panorama"/"Overview") stands for `defaultTypes` and is mutually exclusive with the rest — `static/js/index.js` enforces that in both directions and re-checks it when the selection empties. Its tooltip is built from `dns.DefaultTypeNames()` (`indexView.DefaultTypeList`), so the chip can never over-promise: it is a 9-type sweep, **not** the 44-type catalogue. `?type=ALL` is still accepted and still means "the defaults". A type outside the catalogue (`?type=FOO`, `?type=A,FOO`, `?type=ANY`) is refused with a `400` (`error.invalid_type`): `dns.ValidRecordTypes` checks it first, since `ParseRecordTypes` alone drops what it does not know.
 
 Queries for the DNSSEC family (`dnssecTypes` in `types.go`) are sent with the **EDNS0 DO bit** set and a 4096-byte buffer; without it resolvers strip signatures and denial-of-existence records. A side effect worth knowing: a `DNSKEY`/`DS`/`CDS` lookup also brings back the covering `RRSIG`, so the result page shows an extra card. Queries for every other type stay DO-less, and default lookups are unchanged.
 
@@ -94,7 +94,7 @@ Env vars follow the fragment tags: `OGD_HOST`, `OGD_PORT`, `OGD_RATE_LIMIT`, `OG
 | GET | `/` | `IndexHandler` | search form |
 | GET | `/about` | `AboutHandler` | |
 | GET | `/lookup?query=...&type=...&resolver=...` | `LookupHandler` | HTML; reverse DNS auto-detected from IP input; supports `TYPE:domain` shortcut; `type` repeatable; same status codes as the API |
-| GET | `/api/lookup?query=...&type=...&resolver=...` | `ApiHandler` | JSON; same lookup logic; `400` on invalid input or unknown resolver, `502` when no resolver answers |
+| GET | `/api/lookup?query=...&type=...&resolver=...` | `ApiHandler` | JSON; same lookup logic; `400` on invalid input, unknown type or unknown resolver, `502` when no resolver answers |
 | GET | `/api/status` | `StatusHandler` | per-resolver latency probe, run in parallel; a resolver answering anything but NOERROR counts as `error` |
 | GET | `/static/*` | embedded FS | bypasses rate limit |
 
